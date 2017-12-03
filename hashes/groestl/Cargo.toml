@@ -1,11 +1,13 @@
 [package]
 name = "groestl-aesni"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Kaz Wesley <keziahw@gmail.com>"]
 license = "MIT/Apache-2.0"
 description = "Hardware-accelerated Groestl hash for x86-64 systems with AES extensions"
+documentation = "https://docs.rs/groestl-aesni"
 keywords = ["crypto", "groestl", "hash", "digest"]
 categories = ["cryptography", "no-std"]
+repository = "https://github.com/kazcw/groestl-aesni"
 
 [dependencies]
 digest = { version = "^0.7.1", features = ["dev"] }
