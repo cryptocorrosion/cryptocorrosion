@@ -9,68 +9,78 @@
 #![feature(repr_align, attr_literals)]
 
 pub extern crate digest;
+extern crate block_buffer;
+extern crate byte_tools;
 
+use block_buffer::BlockBuffer512;
+use byte_tools::write_u64v_le;
 pub use digest::Digest;
 use digest::generic_array::GenericArray;
 use digest::generic_array::typenum::{U32, U64};
 
-#[allow(dead_code)]
-#[repr(C)]
-enum HashReturn {
-    Success = 0,
-    Fail = 1,
-}
-
 const ROWS: usize = 8;
 const COLS: usize = 8;
 const SIZE: usize = ROWS * COLS;
+const BITS: u64 = 256;
 
 #[derive(Clone)]
 #[repr(C, align(128))]
 struct HashState {
     chaining: [u64; SIZE / 8],
-    buffer: [u8; SIZE],
     block_counter: u64,
-    buf_ptr: usize,
-    bits_in_last_byte: usize,
 }
 
 impl core::fmt::Debug for HashState {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
         f.debug_struct("HashState")
             .field("chaining", &"(array)")
-            .field("buffer", &"(array)")
             .field("block_counter", &self.block_counter)
-            .field("buf_ptr", &self.buf_ptr)
-            .field("bits_in_last_byte", &self.bits_in_last_byte)
             .finish()
     }
 }
 
 extern "C" {
-    fn groestl_init(ctx: *mut HashState);
-    fn groestl_update(ctx: *mut HashState, input: *const u8, databitlen: usize) -> HashReturn;
-    fn groestl_final(ctx: *mut HashState, output: *mut u8) -> HashReturn;
+    fn init(ctx: *mut [u64; SIZE / 8]);
+    fn tf512(ctx: *mut [u64; SIZE / 8], block: *const [u8; SIZE]);
+    fn of512(ctx: *mut [u64; SIZE / 8]);
 }
 
-#[derive(Clone, Debug)]
+impl Default for HashState {
+    fn default() -> Self {
+        let mut hasher = Self {
+            chaining: [0u64; SIZE / 8],
+            block_counter: 0,
+        };
+        hasher.chaining[COLS-1] = BITS.to_be();
+        unsafe { init(&mut hasher.chaining) };
+        hasher
+    }
+}
+
+impl HashState {
+    fn input_block(&mut self, block: &[u8; SIZE]) {
+        self.block_counter += 1;
+        unsafe { tf512(&mut self.chaining, block); }
+    }
+
+    fn finalize(mut self) -> [u64; SIZE / 8] {
+        unsafe { of512(&mut self.chaining); }
+        self.chaining
+    }
+}
+
+#[derive(Clone, Default)]
 pub struct Groestl256 {
     state: HashState,
+    buffer: BlockBuffer512,
 }
 
-impl Default for Groestl256 {
-    fn default() -> Self {
-        let mut hasher = Groestl256 {
-            state: HashState {
-                chaining: [0u64; SIZE / 8],
-                buffer: [0u8; SIZE],
-                block_counter: 0,
-                buf_ptr: 0,
-                bits_in_last_byte: 0,
-            },
-        };
-        unsafe { groestl_init(&mut hasher.state) };
-        hasher
+impl core::fmt::Debug for Groestl256 {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
+        f.debug_struct("Groestl256")
+            .field("state", &self.state)
+            .field("buffer", &"(BlockBuffer512)")
+            .finish()
     }
 }
 
@@ -80,19 +90,22 @@ impl digest::BlockInput for Groestl256 {
 
 impl digest::Input for Groestl256 {
     fn process(&mut self, data: &[u8]) {
-        match unsafe { groestl_update(&mut self.state, data.as_ptr(), data.len() * 8) } {
-            HashReturn::Success => (),
-            _ => unreachable!(),
-        }
+        let state = &mut self.state;
+        self.buffer.input(data, |b| state.input_block(b));
     }
 }
 
 impl digest::FixedOutput for Groestl256 {
     type OutputSize = U32;
 
-    fn fixed_result(mut self) -> GenericArray<u8, U32> {
+    fn fixed_result(self) -> GenericArray<u8, U32> {
+        let mut state = self.state;
+        let mut buffer = self.buffer;
+        let count = state.block_counter + 1 + (buffer.remaining() <= 8) as u64;
+        buffer.len_padding(count.to_be(), |b| state.input_block(b));
+        let result = state.finalize();
         let mut out = GenericArray::default();
-        unsafe { groestl_final(&mut self.state, out.as_mut_ptr()) };
+        write_u64v_le(&mut out, &result[4..]);
         out
     }
 }
