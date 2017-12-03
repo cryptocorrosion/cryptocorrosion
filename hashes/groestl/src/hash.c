@@ -476,10 +476,10 @@ void TF512(uint64_t* h, uint64_t* m)
   Push_All_Regs();
 
   /* load message into registers xmm12 - xmm15 (Q = message) */
-  asm ("movaps xmm12, [rsi+0*16]");
-  asm ("movaps xmm13, [rsi+1*16]");
-  asm ("movaps xmm14, [rsi+2*16]");
-  asm ("movaps xmm15, [rsi+3*16]");
+  asm ("movdqu xmm12, [rsi+0*16]");
+  asm ("movdqu xmm13, [rsi+1*16]");
+  asm ("movdqu xmm14, [rsi+2*16]");
+  asm ("movdqu xmm15, [rsi+3*16]");
 
   /* transform message M from column ordering into row ordering */
   /* we first put two rows (2x64 bit) of the message into one 128-bit xmm register */
