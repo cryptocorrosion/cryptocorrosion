@@ -6,7 +6,7 @@
 //! Currently this is a FFI wrapper over the optimized reference implementation.
 
 #![no_std]
-#![feature(repr_align, attr_literals)]
+#![feature(attr_literals)]
 
 pub extern crate digest;
 extern crate block_buffer;

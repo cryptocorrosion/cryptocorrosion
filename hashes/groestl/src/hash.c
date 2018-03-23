@@ -42,9 +42,9 @@
  */
 
 /* global constants  */
-__attribute__ ((aligned (16))) static const uint64_t ROUND_CONST_Lx[] = {
+__attribute__ ((aligned (16))) const uint64_t ROUND_CONST_Lx[] = {
   0x0000000000000000ULL,  0xffffffffffffffffULL };
-__attribute__ ((aligned (16))) static const uint64_t ROUND_CONST_L0[] = {
+__attribute__ ((aligned (16))) const uint64_t ROUND_CONST_L0[] = {
   (0ULL * 0x0101010101010101ULL)  ^ 0x7060504030201000ULL,
   0xffffffffffffffffULL,
   (1ULL * 0x0101010101010101ULL)  ^ 0x7060504030201000ULL,
@@ -66,7 +66,7 @@ __attribute__ ((aligned (16))) static const uint64_t ROUND_CONST_L0[] = {
   (9ULL * 0x0101010101010101ULL)  ^ 0x7060504030201000ULL,
   0xffffffffffffffffULL,
 };
-__attribute__ ((aligned (16))) static const uint64_t ROUND_CONST_L7[] = {
+__attribute__ ((aligned (16))) const uint64_t ROUND_CONST_L7[] = {
   0x0000000000000000ULL,
   (0ULL * 0x0101010101010101ULL)  ^ 0x8f9fafbfcfdfefffULL,
   0x0000000000000000ULL,
@@ -88,9 +88,9 @@ __attribute__ ((aligned (16))) static const uint64_t ROUND_CONST_L7[] = {
   0x0000000000000000ULL,
   (9ULL * 0x0101010101010101ULL)  ^ 0x8f9fafbfcfdfefffULL,
 };
-__attribute__ ((aligned (16))) static const uint64_t TRANSP_MASK[] = {
+__attribute__ ((aligned (16))) const uint64_t TRANSP_MASK[] = {
   0x0d0509010c040800ULL, 0x0f070b030e060a02ULL };
-__attribute__ ((aligned (16))) static const uint64_t SUBSH_MASK[] = {
+__attribute__ ((aligned (16))) const uint64_t SUBSH_MASK[] = {
   0x0c0f0104070b0e00ULL,
   0x03060a0d08020509ULL,
   0x0e090205000d0801ULL,
@@ -108,7 +108,7 @@ __attribute__ ((aligned (16))) static const uint64_t SUBSH_MASK[] = {
   0x090c000306080b07ULL,
   0x02050f0a0d01040eULL,
 };
-__attribute__ ((aligned (16))) static const uint64_t ALL_1B[] = {
+__attribute__ ((aligned (16))) const uint64_t ALL_1B[] = {
   0x1b1b1b1b1b1b1b1bULL, 0x1b1b1b1b1b1b1b1bULL };
 
 
