@@ -6,17 +6,15 @@
 //! Currently this is a FFI wrapper over the optimized reference implementation.
 
 #![no_std]
-#![feature(attr_literals)]
 
 pub extern crate digest;
-extern crate block_buffer;
-extern crate byte_tools;
 
-use block_buffer::BlockBuffer512;
-use byte_tools::write_u64v_le;
 pub use digest::Digest;
-use digest::generic_array::GenericArray;
-use digest::generic_array::typenum::{U32, U64};
+use digest::generic_array::GenericArray as DGenericArray;
+use block_buffer::generic_array::GenericArray as BBGenericArray;
+use block_buffer::generic_array::typenum::{U32, U64};
+use block_buffer::byteorder::BigEndian;
+use block_buffer::BlockBuffer;
 
 const ROWS: usize = 8;
 const COLS: usize = 8;
@@ -58,9 +56,9 @@ impl Default for HashState {
 }
 
 impl HashState {
-    fn input_block(&mut self, block: &[u8; SIZE]) {
+    fn input_block(&mut self, block: &BBGenericArray<u8, U64>) {
         self.block_counter += 1;
-        unsafe { tf512(&mut self.chaining, block); }
+        unsafe { tf512(&mut self.chaining, block.as_slice().as_ptr() as *const _); }
     }
 
     fn finalize(mut self) -> [u64; SIZE / 8] {
@@ -72,14 +70,14 @@ impl HashState {
 #[derive(Clone, Default)]
 pub struct Groestl256 {
     state: HashState,
-    buffer: BlockBuffer512,
+    buffer: BlockBuffer<U64>,
 }
 
 impl core::fmt::Debug for Groestl256 {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
         f.debug_struct("Groestl256")
             .field("state", &self.state)
-            .field("buffer", &"(BlockBuffer512)")
+            .field("buffer", &"(BlockBuffer<U64>)")
             .finish()
     }
 }
@@ -98,14 +96,24 @@ impl digest::Input for Groestl256 {
 impl digest::FixedOutput for Groestl256 {
     type OutputSize = U32;
 
-    fn fixed_result(self) -> GenericArray<u8, U32> {
+    fn fixed_result(self) -> DGenericArray<u8, U32> {
         let mut state = self.state;
         let mut buffer = self.buffer;
         let count = state.block_counter + 1 + (buffer.remaining() <= 8) as u64;
-        buffer.len_padding(count.to_be(), |b| state.input_block(b));
+        buffer.len64_padding::<BigEndian, _>(count, |b| state.input_block(b));
         let result = state.finalize();
-        let mut out = GenericArray::default();
-        write_u64v_le(&mut out, &result[4..]);
+        let mut out: DGenericArray<u8, U32> = DGenericArray::default();
+        for (out, &input) in out.as_mut_slice().chunks_mut(8).zip(&result[4..8]) {
+            out[0] = input as u8;
+            out[1] = (input >> 8) as u8;
+            out[2] = (input >> 16) as u8;
+            out[3] = (input >> 24) as u8;
+            out[4] = (input >> 32) as u8;
+            out[5] = (input >> 40) as u8;
+            out[6] = (input >> 48) as u8;
+            out[7] = (input >> 56) as u8;
+        }
         out
     }
 }
+
