@@ -87,9 +87,9 @@ impl digest::BlockInput for Groestl256 {
 }
 
 impl digest::Input for Groestl256 {
-    fn process(&mut self, data: &[u8]) {
+    fn input<T: AsRef<[u8]>>(&mut self, data: T) {
         let state = &mut self.state;
-        self.buffer.input(data, |b| state.input_block(b));
+        self.buffer.input(data.as_ref(), |b| state.input_block(b));
     }
 }
 
@@ -117,3 +117,8 @@ impl digest::FixedOutput for Groestl256 {
     }
 }
 
+impl digest::Reset for Groestl256 {
+    fn reset(&mut self) {
+        *self = Groestl256::default();
+    }
+}
