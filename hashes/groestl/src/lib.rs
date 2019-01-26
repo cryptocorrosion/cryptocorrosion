@@ -2,19 +2,21 @@
 
 //! Implemenation of the Groestl hash function optimized for x86-64 systems with AES extensions.
 //! WARNING: CPU feature detection and portable fallback are left to user!
-//!
-//! Currently this is a FFI wrapper over the optimized reference implementation.
 
 #![no_std]
 
 pub extern crate digest;
 
-pub use digest::Digest;
-use digest::generic_array::GenericArray as DGenericArray;
-use block_buffer::generic_array::GenericArray as BBGenericArray;
-use block_buffer::generic_array::typenum::{U32, U64};
 use block_buffer::byteorder::BigEndian;
+use block_buffer::generic_array::typenum::{U32, U64};
+use block_buffer::generic_array::GenericArray as BBGenericArray;
 use block_buffer::BlockBuffer;
+use core::mem;
+use digest::generic_array::GenericArray as DGenericArray;
+pub use digest::Digest;
+
+mod sse2;
+use sse2::sse2::{init, of512, tf512};
 
 const ROWS: usize = 8;
 const COLS: usize = 8;
@@ -22,7 +24,7 @@ const SIZE: usize = ROWS * COLS;
 const BITS: u64 = 256;
 
 #[derive(Clone)]
-#[repr(C, align(128))]
+#[repr(C, align(16))]
 struct HashState {
     chaining: [u64; SIZE / 8],
     block_counter: u64,
@@ -37,40 +39,45 @@ impl core::fmt::Debug for HashState {
     }
 }
 
-extern "C" {
-    fn init(ctx: *mut [u64; SIZE / 8]);
-    fn tf512(ctx: *mut [u64; SIZE / 8], block: *const [u8; SIZE]);
-    fn of512(ctx: *mut [u64; SIZE / 8]);
-}
+#[repr(C, align(16))]
+struct Align16<T>(T);
 
 impl Default for HashState {
     fn default() -> Self {
-        let mut hasher = Self {
-            chaining: [0u64; SIZE / 8],
-            block_counter: 0,
-        };
-        hasher.chaining[COLS-1] = BITS.to_be();
-        unsafe { init(&mut hasher.chaining) };
-        hasher
+        unsafe {
+            let mut iv = Align16([0u64; SIZE / 8]);
+            iv.0[COLS - 1] = BITS.to_be();
+            Self {
+                chaining: mem::transmute(init(mem::transmute(iv))),
+                block_counter: 0,
+            }
+        }
     }
 }
 
 impl HashState {
     fn input_block(&mut self, block: &BBGenericArray<u8, U64>) {
         self.block_counter += 1;
-        unsafe { tf512(&mut self.chaining, block.as_slice().as_ptr() as *const _); }
+        unsafe {
+            tf512(
+                mem::transmute(&mut self.chaining),
+                &*(block.as_ptr() as *const _),
+            );
+        }
     }
 
     fn finalize(mut self) -> [u64; SIZE / 8] {
-        unsafe { of512(&mut self.chaining); }
+        unsafe {
+            of512(mem::transmute(&mut self.chaining));
+        }
         self.chaining
     }
 }
 
 #[derive(Clone, Default)]
 pub struct Groestl256 {
-    state: HashState,
     buffer: BlockBuffer<U64>,
+    state: HashState,
 }
 
 impl core::fmt::Debug for Groestl256 {

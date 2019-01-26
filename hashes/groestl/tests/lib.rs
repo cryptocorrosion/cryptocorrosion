@@ -1,22 +1,13 @@
-use digest::Digest;
+#![no_std]
+#[macro_use]
+extern crate digest;
+extern crate groestl_aesni;
 
-fn do_test(path: &str) {
-    let input = std::fs::read(format!("tests/data/{}.input.bin", path)).unwrap();
-    let output = std::fs::read(format!("tests/data/{}.output.bin", path)).unwrap();
-    let hash = groestl_aesni::Groestl256::digest(&input);
-    assert_eq!(&hash[..], &output[..]);
-}
+use digest::dev::digest_test;
 
-#[test]
-fn groestl_256_0() {
-    for path in &[
-        "groestl_256/test32_0",
-        "groestl_256/test32_17",
-        "groestl_256/test32_32",
-        "groestl_256/test32_64",
-        "groestl_256/test32_123",
-        "groestl_256/test32_131",
-    ] {
-        do_test(path);
-    }
-}
+new_test!(
+    groestl_256,
+    "groestl256",
+    groestl_aesni::Groestl256,
+    digest_test
+);

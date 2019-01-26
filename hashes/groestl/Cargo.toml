@@ -14,8 +14,8 @@ edition = "2018"
 block-buffer = "0.7"
 digest = "0.8"
 
-[build-dependencies]
-cc = "1.0.0"
+[dev-dependencies]
+digest = { version = "0.8", features = ["dev"] }
 
 [badges]
 travis-ci = { repository = "kazcw/groestl-aesni" }
