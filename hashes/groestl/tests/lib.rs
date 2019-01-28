@@ -18,3 +18,17 @@ new_test!(
     groestl_aesni::Groestl256,
     digest_test
 );
+
+new_test!(
+    groestl_384,
+    "groestl384",
+    groestl_aesni::Groestl384,
+    digest_test
+);
+
+new_test!(
+    groestl_512,
+    "groestl512",
+    groestl_aesni::Groestl512,
+    digest_test
+);
