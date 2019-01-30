@@ -13,7 +13,7 @@ mod consts;
 
 pub use digest::Digest;
 
-use block_buffer::byteorder::BigEndian;
+use block_buffer::byteorder::{BigEndian, ByteOrder};
 use block_buffer::generic_array::GenericArray as BBGenericArray;
 use block_buffer::BlockBuffer;
 use compressor::Compressor;
@@ -75,14 +75,7 @@ macro_rules! define_hasher {
                     use block_buffer::block_padding::Iso7816;
                     state.input(buffer.pad_with::<Iso7816>().unwrap());
                     let mut last = BBGenericArray::default();
-                    last[56] = (len >> 56) as u8;
-                    last[57] = (len >> 48) as u8;
-                    last[58] = (len >> 40) as u8;
-                    last[59] = (len >> 32) as u8;
-                    last[60] = (len >> 24) as u8;
-                    last[61] = (len >> 16) as u8;
-                    last[62] = (len >> 8) as u8;
-                    last[63] = len as u8;
+                    BigEndian::write_u64(&mut last[56..], len);
                     state.input(&last);
                 }
                 let finalized = self.state.finalize();
