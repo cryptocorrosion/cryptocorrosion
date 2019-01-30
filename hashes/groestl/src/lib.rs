@@ -12,7 +12,7 @@ extern crate lazy_static;
 
 use block_buffer::byteorder::{BigEndian, ByteOrder, LE};
 use block_buffer::generic_array::typenum::{
-    PartialDiv, Unsigned, U1024, U16, U28, U48, U512, U64, U8,
+    PartialDiv, Unsigned, U1024, U128, U16, U28, U48, U512, U64, U8,
 };
 use block_buffer::generic_array::GenericArray as BBGenericArray;
 use block_buffer::BlockBuffer;
@@ -28,50 +28,40 @@ use sse2::{init1024, init512, of1024, of512, tf1024, tf512};
 struct Align16<T>(T);
 
 type Block512 = [u64; 512 / 64];
-#[repr(C, align(16))]
 #[derive(Clone)]
 struct Compressor512 {
-    cv: [u64; 512 / 64],
+    cv: sse2::X4,
 }
 impl Compressor512 {
     fn new(block: Block512) -> Self {
-        let cv = unsafe { mem::transmute(init512(mem::transmute(block))) };
+        let cv = unsafe { init512(mem::transmute(block)) };
         Compressor512 { cv }
     }
-    fn input(&mut self, data: &Block512) {
-        unsafe {
-            tf512(mem::transmute(&mut self.cv), &*(data.as_ptr() as *const _));
-        }
+    fn input(&mut self, data: &BBGenericArray<u8, U64>) {
+        tf512(&mut self.cv, data);
     }
     fn finalize(mut self) -> Block512 {
-        unsafe {
-            of512(mem::transmute(&mut self.cv));
-        }
-        self.cv
+        of512(&mut self.cv);
+        unsafe { mem::transmute(self.cv) }
     }
 }
 
 type Block1024 = [u64; 1024 / 64];
-#[repr(C, align(16))]
 #[derive(Clone)]
 struct Compressor1024 {
-    cv: [u64; 1024 / 64],
+    cv: sse2::X8,
 }
 impl Compressor1024 {
     fn new(block: Block1024) -> Self {
-        let cv = unsafe { mem::transmute(init1024(mem::transmute(block))) };
+        let cv = unsafe { init1024(mem::transmute(block)) };
         Compressor1024 { cv }
     }
-    fn input(&mut self, data: &Block1024) {
-        unsafe {
-            tf1024(mem::transmute(&mut self.cv), &*(data.as_ptr() as *const _));
-        }
+    fn input(&mut self, data: &BBGenericArray<u8, U128>) {
+        tf1024(&mut self.cv, data);
     }
     fn finalize(mut self) -> Block1024 {
-        unsafe {
-            of1024(mem::transmute(&mut self.cv));
-        }
-        self.cv
+        of1024(&mut self.cv);
+        unsafe { mem::transmute(self.cv) }
     }
 }
 
@@ -98,9 +88,7 @@ macro_rules! impl_digest {
                 let mut buffer = self.buffer;
                 let mut compressor = self.compressor;
                 let count = self.block_counter + 1 + (buffer.remaining() <= 8) as u64;
-                buffer.len64_padding::<BigEndian, _>(count, |b| {
-                    compressor.input(unsafe { mem::transmute(b) })
-                });
+                buffer.len64_padding::<BigEndian, _>(count, |b| compressor.input(b));
                 compressor.finalize()
             }
         }
@@ -123,7 +111,7 @@ macro_rules! impl_digest {
                 let compressor = &mut self.compressor;
                 self.buffer.input(data.as_ref(), |b| {
                     *block_counter += 1;
-                    compressor.input(unsafe { mem::transmute(b) })
+                    compressor.input(b)
                 });
             }
         }

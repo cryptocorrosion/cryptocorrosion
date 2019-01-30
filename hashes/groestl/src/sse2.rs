@@ -1,3 +1,5 @@
+use block_buffer::generic_array::typenum::{U128, U64};
+use block_buffer::generic_array::GenericArray;
 use core::arch::x86_64::*;
 use core::ops::BitXor;
 
@@ -596,9 +598,9 @@ mod autodetect {
         };
     }
     #[inline]
-    pub fn tf512(cv: &mut X4, data: *const __m128i) {
+    pub fn tf512(cv: &mut X4, data: &GenericArray<u8, U64>) {
         dispatch!(tf512, Tf<X4>);
-        unsafe { IMPL(cv, data) }
+        unsafe { IMPL(cv, data.as_ptr() as *const _) }
     }
     #[inline]
     pub fn of512(cv: &mut X4) {
@@ -611,9 +613,9 @@ mod autodetect {
         unsafe { IMPL(cv) }
     }
     #[inline]
-    pub fn tf1024(cv: &mut X8, data: *const __m128i) {
+    pub fn tf1024(cv: &mut X8, data: &GenericArray<u8, U128>) {
         dispatch!(tf1024, Tf<X8>);
-        unsafe { IMPL(cv, data) }
+        unsafe { IMPL(cv, data.as_ptr() as *const _) }
     }
     #[inline]
     pub fn of1024(cv: &mut X8) {
