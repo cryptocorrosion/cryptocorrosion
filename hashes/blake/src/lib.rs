@@ -18,7 +18,6 @@ pub use digest::Digest;
 #[repr(C)]
 struct State<T> {
     h: [T; 8],
-    s: [T; 4],
     t: [T; 2],
     nullt: bool,
 }
@@ -64,9 +63,6 @@ macro_rules! define_compressor {
                 let mut v = [0; 16];
                 &v[..8].copy_from_slice(&self.state.h);
                 &v[8..].copy_from_slice(&U[..8]);
-                for (vx, sx) in v[8..11].iter_mut().zip(&self.state.s) {
-                    *vx ^= *sx;
-                }
 
                 // don't xor t when the block is only padding
                 if !self.state.nullt {
@@ -91,10 +87,6 @@ macro_rules! define_compressor {
 
                 for (i, vx) in v.iter().enumerate() {
                     self.state.h[i % 8] ^= *vx;
-                }
-
-                for (i, hx) in self.state.h.iter_mut().enumerate() {
-                    *hx ^= self.state.s[i % 4];
                 }
             }
         }
@@ -125,7 +117,6 @@ macro_rules! define_hasher {
                     compressor: $compressor {
                         state: State::<$word> {
                             h: $iv,
-                            s: [0; 4],
                             t: [0; 2],
                             nullt: false,
                         }
