@@ -1,11 +1,14 @@
 // copyright 2017 Kaz Wesley
 
-//! Implemenation of the Groestl hash function optimized for x86-64 systems with AES extensions.
-//! WARNING: CPU feature detection and portable fallback are left to user!
+//! Implemenation of the Groestl hash function optimized for x86-64 systems.
+//! Makes use of sse2, ssse3, and aes extensions as available.
 
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 pub extern crate digest;
+#[cfg(feature = "std")]
+#[macro_use]
+extern crate lazy_static;
 
 use block_buffer::byteorder::{BigEndian, ByteOrder, LE};
 use block_buffer::generic_array::typenum::{
@@ -19,7 +22,7 @@ use digest::generic_array::GenericArray as DGenericArray;
 pub use digest::Digest;
 
 mod sse2;
-use sse2::sse2::{init1024, init512, of1024, of512, tf1024, tf512};
+use sse2::{init1024, init512, of1024, of512, tf1024, tf512};
 
 #[repr(C, align(16))]
 struct Align16<T>(T);

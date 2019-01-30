@@ -2,11 +2,14 @@
 
 //! Portable JH with optimizations for x86-64
 
-#![cfg_attr(not(features = "std"), no_std)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 pub extern crate digest;
 #[macro_use]
 extern crate hex_literal;
+#[cfg(all(feature = "std", feature = "simd"))]
+#[macro_use]
+extern crate lazy_static;
 
 mod compressor;
 mod consts;

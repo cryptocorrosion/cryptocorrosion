@@ -482,6 +482,7 @@ unsafe fn of1024_impl(cv: &mut X8) {
     cv.7 = p.7;
 }
 
+#[cfg(any(feature = "std", target_feature = "aes"))]
 pub mod aes {
     use super::*;
     #[target_feature(enable = "sse2", enable = "ssse3", enable = "aes")]
@@ -511,6 +512,7 @@ pub mod aes {
 }
 
 #[cfg(not(target_feature = "aes"))]
+#[cfg(any(feature = "std", target_feature = "ssse3"))]
 pub mod ssse3 {
     use super::*;
     #[target_feature(enable = "sse2", enable = "ssse3")]
@@ -535,6 +537,7 @@ pub mod ssse3 {
 pub use aes as ssse3;
 
 #[cfg(not(target_feature = "ssse3"))]
+#[cfg(any(feature = "std", target_feature = "sse2"))]
 pub mod sse2 {
     use super::*;
     #[target_feature(enable = "sse2")]
@@ -564,6 +567,67 @@ pub mod sse2 {
 }
 #[cfg(target_feature = "ssse3")]
 pub use ssse3 as sse2;
+
+#[cfg(all(not(feature = "std"), target_feature = "sse2"))]
+pub use sse2::*;
+
+#[cfg(feature = "std")]
+mod autodetect {
+    use super::*;
+    type Tf<T> = unsafe fn(cv: &mut T, data: *const __m128i);
+    type Of<T> = unsafe fn(cv: &mut T);
+    type Init<T> = unsafe fn(cv: T) -> T;
+    macro_rules! dispatch {
+        ($fn:ident, $ty:ty) => {
+            fn dispatch_init() -> $ty {
+                if is_x86_feature_detected!("aes") {
+                    aes::$fn
+                } else if is_x86_feature_detected!("ssse3") {
+                    ssse3::$fn
+                } else if is_x86_feature_detected!("sse2") {
+                    sse2::$fn
+                } else {
+                    panic!("groestl_aesni requires at least sse2 (not detected)")
+                }
+            }
+            lazy_static! {
+                static ref IMPL: $ty = { dispatch_init() };
+            }
+        };
+    }
+    #[inline]
+    pub fn tf512(cv: &mut X4, data: *const __m128i) {
+        dispatch!(tf512, Tf<X4>);
+        unsafe { IMPL(cv, data) }
+    }
+    #[inline]
+    pub fn of512(cv: &mut X4) {
+        dispatch!(of512, Of<X4>);
+        unsafe { IMPL(cv) }
+    }
+    #[inline]
+    pub fn init512(cv: X4) -> X4 {
+        dispatch!(init512, Init<X4>);
+        unsafe { IMPL(cv) }
+    }
+    #[inline]
+    pub fn tf1024(cv: &mut X8, data: *const __m128i) {
+        dispatch!(tf1024, Tf<X8>);
+        unsafe { IMPL(cv, data) }
+    }
+    #[inline]
+    pub fn of1024(cv: &mut X8) {
+        dispatch!(of1024, Of<X8>);
+        unsafe { IMPL(cv) }
+    }
+    #[inline]
+    pub fn init1024(cv: X8) -> X8 {
+        dispatch!(init1024, Init<X8>);
+        unsafe { IMPL(cv) }
+    }
+}
+#[cfg(feature = "std")]
+pub use autodetect::*;
 
 #[cfg(test)]
 mod test {
