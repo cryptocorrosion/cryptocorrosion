@@ -436,7 +436,7 @@ unsafe fn f8(state: &mut X8, data: *const U128) {
     y.1 ^= ptr::read_unaligned(data.offset(1));
     y.2 ^= ptr::read_unaligned(data.offset(2));
     y.3 ^= ptr::read_unaligned(data.offset(3));
-    let roundconst: [X2; 42] = core::mem::transmute(E8_BITSLICE_ROUNDCONSTANT);
+    let roundconst: [X2; 42] = mem::transmute(E8_BITSLICE_ROUNDCONSTANT);
     for rc in roundconst.chunks_exact(7) {
         unroll7!(j, {
             y = ss(y, rc[j]);

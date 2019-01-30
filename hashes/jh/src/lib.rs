@@ -17,6 +17,7 @@ use block_buffer::byteorder::{BigEndian, ByteOrder};
 use block_buffer::generic_array::GenericArray as BBGenericArray;
 use block_buffer::BlockBuffer;
 use compressor::Compressor;
+use core::fmt::{Debug, Formatter, Result};
 use digest::generic_array::typenum::{Unsigned, U28, U32, U48, U64};
 use digest::generic_array::GenericArray as DGenericArray;
 
@@ -29,8 +30,8 @@ macro_rules! define_hasher {
             datalen: usize,
         }
 
-        impl core::fmt::Debug for $name {
-            fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
+        impl Debug for $name {
+            fn fmt(&self, f: &mut Formatter) -> Result {
                 f.debug_struct("Jh")
                     .field("state", &"(state)")
                     .field("buffer", &"(BlockBuffer<U64>)")
