@@ -1,7 +1,9 @@
 #![allow(non_upper_case_globals)]
 
 use core::ops::{BitAnd, BitOr, BitXor, BitXorAssign};
-use core::ptr;
+use core::{mem, ptr};
+use digest::generic_array::typenum::U64;
+use digest::generic_array::GenericArray;
 
 const E8_BITSLICE_ROUNDCONSTANT: [[u8; 32]; 42] = [
     hex!("72d5dea2df15f8677b84150ab723155781abd6904d5a87f64e9f4fc5c3d12b40"),
@@ -379,7 +381,7 @@ use double_channel::X2;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
-pub struct X8(U128, U128, U128, U128, U128, U128, U128, U128);
+struct X8(U128, U128, U128, U128, U128, U128, U128, U128);
 impl X8 {
     #[inline(always)]
     fn unzip(self) -> (X2, X2, X2, X2) {
@@ -428,7 +430,7 @@ unsafe fn l(mut y: X8) -> X8 {
     y
 }
 
-pub unsafe fn f8(state: &mut X8, data: *const U128) {
+unsafe fn f8(state: &mut X8, data: *const U128) {
     let mut y = *state;
     y.0 ^= ptr::read_unaligned(data);
     y.1 ^= ptr::read_unaligned(data.offset(1));
@@ -457,4 +459,20 @@ pub unsafe fn f8(state: &mut X8, data: *const U128) {
     y.6 ^= ptr::read_unaligned(data.offset(2));
     y.7 ^= ptr::read_unaligned(data.offset(3));
     *state = y;
+}
+
+#[derive(Clone)]
+pub struct Compressor(X8);
+impl Compressor {
+    pub fn new(iv: [u8; 128]) -> Self {
+        Compressor(unsafe { mem::transmute(iv) })
+    }
+    pub fn input(&mut self, data: &GenericArray<u8, U64>) {
+        unsafe {
+            f8(&mut self.0, data.as_ptr() as *const _);
+        }
+    }
+    pub fn finalize(self) -> [u8; 128] {
+        unsafe { mem::transmute(self.0) }
+    }
 }
