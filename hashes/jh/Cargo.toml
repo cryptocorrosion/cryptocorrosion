@@ -1,13 +1,13 @@
 [package]
 name = "jh-x86_64"
 version = "0.2.1"
-authors = ["Kaz Wesley <keziahw@gmail.com>"]
+authors = ["The CryptoCorrosion Contributors"]
 license = "MIT/Apache-2.0"
 description = "Portable JH with optimizations for x86-64 cpus"
 documentation = "https://docs.rs/jh-x86_64"
 keywords = ["crypto", "jh", "hash", "digest"]
 categories = ["cryptography", "no-std"]
-repository = "https://github.com/kazcw/jh-x86_64"
+repository = "https://github.com/cryptocorrosion/cryptocorrosion"
 edition = "2018"
 
 [dependencies]
@@ -29,4 +29,4 @@ simd = []
 avx2 = ["simd"]
 
 [badges]
-travis-ci = { repository = "kazcw/jh-x86_64" }
+travis-ci = { repository = "cryptocorrosion/cryptocorrosion" }

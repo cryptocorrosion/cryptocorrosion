@@ -1,13 +1,13 @@
 [package]
 name = "groestl-aesni"
 version = "0.2.1"
-authors = ["Kaz Wesley <keziahw@gmail.com>"]
+authors = ["The CryptoCorrosion Contributors"]
 license = "MIT/Apache-2.0"
 description = "Hardware-accelerated Groestl hash for x86-64 systems with AES extensions"
 documentation = "https://docs.rs/groestl-aesni"
 keywords = ["crypto", "groestl", "hash", "digest"]
 categories = ["cryptography", "no-std"]
-repository = "https://github.com/kazcw/groestl-aesni"
+repository = "https://github.com/cryptocorrosion/hashes"
 edition = "2018"
 
 [dependencies]
@@ -23,4 +23,4 @@ std = ["lazy_static"]
 default = ["std"]
 
 [badges]
-travis-ci = { repository = "kazcw/groestl-aesni" }
+travis-ci = { repository = "cryptocorrosion/hashes" }

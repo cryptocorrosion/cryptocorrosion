@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "block-ciphers/threefish",
+    "hashes/blake",
+    "hashes/groestl",
+    "hashes/jh",
+    "hashes/skein",
+]
+
+[patch.crates-io]
+threefish-cipher = { path = "block-ciphers/threefish" }

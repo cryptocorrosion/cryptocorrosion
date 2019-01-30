@@ -1,10 +1,10 @@
 [package]
-name = "blake"
+name = "blake-hash"
 version = "0.2.0"
-authors = ["Kaz Wesley <keziahw@gmail.com>"]
+authors = ["The CryptoCorrosion Contributors"]
 license = "MIT/Apache-2.0"
 description = "BLAKE hash functions"
-repository = "https://github.com/RustCrypto/hashes"
+repository = "https://github.com/cryptocorrosion/hashes"
 keywords = ["crypto", "blake", "hash", "digest"]
 categories = ["cryptography", "no-std"]
 

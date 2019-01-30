@@ -4,8 +4,8 @@
 
 extern crate block_buffer;
 extern crate block_padding;
-extern crate threefish;
 pub extern crate digest;
+extern crate threefish_cipher;
 
 pub use digest::generic_array::GenericArray;
 pub use digest::Digest;
@@ -15,7 +15,7 @@ use block_buffer::BlockBuffer;
 use block_padding::ZeroPadding;
 use digest::generic_array::typenum::{NonZero, PartialDiv, Unsigned, U128, U32, U64, U8};
 use digest::generic_array::ArrayLength;
-use threefish::{BlockCipher, Threefish1024, Threefish256, Threefish512};
+use threefish_cipher::{BlockCipher, Threefish1024, Threefish256, Threefish512};
 
 /// N word buffer.
 #[derive(Copy, Clone)]
