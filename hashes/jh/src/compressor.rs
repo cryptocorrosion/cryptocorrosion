@@ -63,7 +63,7 @@ macro_rules! unroll7 {
     };
 }
 
-#[cfg(not(target_feature = "sse2"))]
+#[cfg(not(all(feature = "simd", target_feature = "sse2")))]
 mod generic {
     use super::*;
     #[repr(C)]
@@ -142,10 +142,10 @@ mod generic {
         }
     }
 }
-#[cfg(not(target_feature = "sse2"))]
+#[cfg(not(all(feature = "simd", target_feature = "sse2")))]
 use generic::*;
 
-#[cfg(target_feature = "sse2")]
+#[cfg(all(feature = "simd", target_feature = "sse2"))]
 mod sse2 {
     use super::*;
     #[cfg(target_arch = "x86")]
@@ -270,7 +270,7 @@ mod sse2 {
         }
     }
 }
-#[cfg(target_feature = "sse2")]
+#[cfg(all(feature = "simd", target_feature = "sse2"))]
 use sse2::*;
 
 #[cfg(not(all(feature = "avx2", target_feature = "avx2")))]

@@ -22,9 +22,10 @@ digest = { version = "0.8", features = ["dev"] }
 cc = "1.0.3"
 
 [features]
-default = ["std"]
+default = ["std","simd"]
 std = []
-avx2 = []
+simd = []
+avx2 = ["simd"]
 
 [badges]
 travis-ci = { repository = "kazcw/jh-x86_64" }
