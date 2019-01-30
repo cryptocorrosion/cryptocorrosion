@@ -34,21 +34,33 @@ macro_rules! define_compressor {
             fn increase_count(&mut self, count: $word) {
                 let (new_t0, carry) = self.state.t[0].overflowing_add(count * 8);
                 self.state.t[0] = new_t0;
-                if carry { self.state.t[1] += 1; }
+                if carry {
+                    self.state.t[1] += 1;
+                }
             }
 
             fn put_block(&mut self, block: &GenericArray<u8, $Bufsz>) {
                 const U: [$word; 16] = $uval;
 
                 #[inline(always)]
-                fn g(v: &mut [$word; 16], m: &[$word; 16], sigma: &[u8; 16],
-                    a: usize, b: usize, c: usize, d: usize, e: usize) {
-                    v[a] = v[a].wrapping_add(m[sigma[e] as usize] ^ U[sigma[e+1] as usize])
+                fn g(
+                    v: &mut [$word; 16],
+                    m: &[$word; 16],
+                    sigma: &[u8; 16],
+                    a: usize,
+                    b: usize,
+                    c: usize,
+                    d: usize,
+                    e: usize,
+                ) {
+                    v[a] = v[a]
+                        .wrapping_add(m[sigma[e] as usize] ^ U[sigma[e + 1] as usize])
                         .wrapping_add(v[b]);
                     v[d] = (v[d] ^ v[a]).rotate_right($shift0);
                     v[c] = v[c].wrapping_add(v[d]);
                     v[b] = (v[b] ^ v[c]).rotate_right($shift1);
-                    v[a] = v[a].wrapping_add(m[sigma[e+1] as usize] ^ U[sigma[e] as usize])
+                    v[a] = v[a]
+                        .wrapping_add(m[sigma[e + 1] as usize] ^ U[sigma[e] as usize])
                         .wrapping_add(v[b]);
                     v[d] = (v[d] ^ v[a]).rotate_right($shift2);
                     v[c] = v[c].wrapping_add(v[d]);
@@ -74,15 +86,15 @@ macro_rules! define_compressor {
 
                 for sigma in &SIGMA[..$rounds] {
                     // column step
-                    g(&mut v, &m, sigma, 0,  4,  8, 12,  0 );
-                    g(&mut v, &m, sigma, 1,  5,  9, 13,  2 );
-                    g(&mut v, &m, sigma, 2,  6, 10, 14,  4 );
-                    g(&mut v, &m, sigma, 3,  7, 11, 15,  6 );
+                    g(&mut v, &m, sigma, 0, 4, 8, 12, 0);
+                    g(&mut v, &m, sigma, 1, 5, 9, 13, 2);
+                    g(&mut v, &m, sigma, 2, 6, 10, 14, 4);
+                    g(&mut v, &m, sigma, 3, 7, 11, 15, 6);
                     // diagonal step
-                    g(&mut v, &m, sigma, 0,  5, 10, 15,  8 );
-                    g(&mut v, &m, sigma, 1,  6, 11, 12, 10 );
-                    g(&mut v, &m, sigma, 2,  7,  8, 13, 12 );
-                    g(&mut v, &m, sigma, 3,  4,  9, 14, 14 );
+                    g(&mut v, &m, sigma, 0, 5, 10, 15, 8);
+                    g(&mut v, &m, sigma, 1, 6, 11, 12, 10);
+                    g(&mut v, &m, sigma, 2, 7, 8, 13, 12);
+                    g(&mut v, &m, sigma, 3, 4, 9, 14, 14);
                 }
 
                 for (i, vx) in v.iter().enumerate() {
@@ -90,7 +102,7 @@ macro_rules! define_compressor {
                 }
             }
         }
-    }
+    };
 }
 
 macro_rules! define_hasher {
@@ -119,7 +131,7 @@ macro_rules! define_hasher {
                             h: $iv,
                             t: [0; 2],
                             nullt: false,
-                        }
+                        },
                     },
                     buffer: BlockBuffer::default(),
                 }
@@ -149,16 +161,20 @@ macro_rules! define_hasher {
 
                 compressor.increase_count(buffer.position() as $word);
 
-                let mut msglen = [0u8; $buf/8];
-                $serializer(&mut msglen[..$buf/16], compressor.state.t[1]);
-                $serializer(&mut msglen[$buf/16..], compressor.state.t[0]);
+                let mut msglen = [0u8; $buf / 8];
+                $serializer(&mut msglen[..$buf / 16], compressor.state.t[1]);
+                $serializer(&mut msglen[$buf / 16..], compressor.state.t[0]);
 
                 let footerlen = 1 + 2 * mem::size_of::<$word>();
 
                 // low bit indicates full-length variant
                 let isfull = ($bits == 8 * mem::size_of::<[$word; 8]>()) as u8;
                 // high bit indicates fit with no padding
-                let exactfit = if buffer.position() + footerlen != $buf { 0x00 } else { 0x80 };
+                let exactfit = if buffer.position() + footerlen != $buf {
+                    0x00
+                } else {
+                    0x80
+                };
                 let magic = isfull | exactfit;
 
                 // if header won't fit in last data block, pad to the end and start a new one
@@ -180,8 +196,12 @@ macro_rules! define_hasher {
                 debug_assert_eq!(buffer.position(), 0);
 
                 let mut out = GenericArray::default();
-                for (h, out) in compressor.state.h.iter()
-                    .zip(out.chunks_mut(mem::size_of::<$word>())) {
+                for (h, out) in compressor
+                    .state
+                    .h
+                    .iter()
+                    .zip(out.chunks_mut(mem::size_of::<$word>()))
+                {
                     $serializer(out, *h);
                 }
                 out
