@@ -27,64 +27,81 @@ use sse2::{init1024, init512, of1024, of512, tf1024, tf512};
 #[repr(C, align(16))]
 struct Align16<T>(T);
 
+type Block512 = [u64; 512 / 64];
+#[repr(C, align(16))]
+#[derive(Clone)]
+struct Compressor512 {
+    cv: [u64; 512 / 64],
+}
+impl Compressor512 {
+    fn new(block: Block512) -> Self {
+        let cv = unsafe { mem::transmute(init512(mem::transmute(block))) };
+        Compressor512 { cv }
+    }
+    fn input(&mut self, data: &Block512) {
+        unsafe {
+            tf512(mem::transmute(&mut self.cv), &*(data.as_ptr() as *const _));
+        }
+    }
+    fn finalize(mut self) -> Block512 {
+        unsafe {
+            of512(mem::transmute(&mut self.cv));
+        }
+        self.cv
+    }
+}
+
+type Block1024 = [u64; 1024 / 64];
+#[repr(C, align(16))]
+#[derive(Clone)]
+struct Compressor1024 {
+    cv: [u64; 1024 / 64],
+}
+impl Compressor1024 {
+    fn new(block: Block1024) -> Self {
+        let cv = unsafe { mem::transmute(init1024(mem::transmute(block))) };
+        Compressor1024 { cv }
+    }
+    fn input(&mut self, data: &Block1024) {
+        unsafe {
+            tf1024(mem::transmute(&mut self.cv), &*(data.as_ptr() as *const _));
+        }
+    }
+    fn finalize(mut self) -> Block1024 {
+        unsafe {
+            of1024(mem::transmute(&mut self.cv));
+        }
+        self.cv
+    }
+}
+
 macro_rules! impl_digest {
-    ($groestl:ident, $state:ident, $init:ident, $tf:ident, $of:ident, $bits:ident) => {
-        #[derive(Clone)]
-        #[repr(C, align(16))]
-        struct $state {
-            chaining: [u64; $bits::USIZE / 64],
-            block_counter: u64,
-        }
-
-        impl $state {
-            fn new(bits: u32) -> Self {
-                unsafe {
-                    let mut iv = Align16([0u64; $bits::USIZE / 64]);
-                    iv.0[iv.0.len() - 1] = u64::from(bits).to_be();
-                    Self {
-                        chaining: mem::transmute($init(mem::transmute(iv))),
-                        block_counter: 0,
-                    }
-                }
-            }
-            fn input_block(
-                &mut self,
-                block: &BBGenericArray<u8, <$bits as PartialDiv<U8>>::Output>,
-            ) {
-                self.block_counter += 1;
-                unsafe {
-                    $tf(
-                        mem::transmute(&mut self.chaining),
-                        &*(block.as_ptr() as *const _),
-                    );
-                }
-            }
-            fn finalize(mut self) -> [u64; $bits::USIZE / 64] {
-                unsafe {
-                    $of(mem::transmute(&mut self.chaining));
-                }
-                self.chaining
-            }
-        }
-
+    ($groestl:ident, $compressor:ident, $bits:ident) => {
         #[derive(Clone)]
         pub struct $groestl {
             buffer: BlockBuffer<<$bits as PartialDiv<U8>>::Output>,
-            state: $state,
+            block_counter: u64,
+            compressor: $compressor,
         }
         impl $groestl {
             fn new_truncated(bits: u32) -> Self {
+                let mut iv = Align16([0u64; $bits::USIZE / 64]);
+                iv.0[iv.0.len() - 1] = u64::from(bits).to_be();
+                let compressor = $compressor::new(iv.0);
                 Self {
                     buffer: BlockBuffer::default(),
-                    state: $state::new(bits),
+                    compressor: compressor,
+                    block_counter: 0,
                 }
             }
             fn finalize(self) -> [u64; $bits::USIZE / 64] {
-                let mut state = self.state;
                 let mut buffer = self.buffer;
-                let count = state.block_counter + 1 + (buffer.remaining() <= 8) as u64;
-                buffer.len64_padding::<BigEndian, _>(count, |b| state.input_block(b));
-                state.finalize()
+                let mut compressor = self.compressor;
+                let count = self.block_counter + 1 + (buffer.remaining() <= 8) as u64;
+                buffer.len64_padding::<BigEndian, _>(count, |b| {
+                    compressor.input(unsafe { mem::transmute(b) })
+                });
+                compressor.finalize()
             }
         }
         impl Default for $groestl {
@@ -102,8 +119,12 @@ macro_rules! impl_digest {
         }
         impl digest::Input for $groestl {
             fn input<T: AsRef<[u8]>>(&mut self, data: T) {
-                let state = &mut self.state;
-                self.buffer.input(data.as_ref(), |b| state.input_block(b));
+                let block_counter = &mut self.block_counter;
+                let compressor = &mut self.compressor;
+                self.buffer.input(data.as_ref(), |b| {
+                    *block_counter += 1;
+                    compressor.input(unsafe { mem::transmute(b) })
+                });
             }
         }
         impl digest::FixedOutput for $groestl {
@@ -125,8 +146,8 @@ macro_rules! impl_digest {
     };
 }
 
-impl_digest!(Groestl256, State512, init512, tf512, of512, U512);
-impl_digest!(Groestl512, State1024, init1024, tf1024, of1024, U1024);
+impl_digest!(Groestl256, Compressor512, U512);
+impl_digest!(Groestl512, Compressor1024, U1024);
 
 #[derive(Clone, Debug)]
 pub struct Groestl224(Groestl256);
