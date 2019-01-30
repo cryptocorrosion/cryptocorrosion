@@ -1,6 +1,6 @@
 #![no_std]
 #![feature(test)]
-extern crate threefish;
+extern crate threefish_cipher;
 
 extern crate test;
 extern crate block_cipher_trait;
@@ -13,7 +13,7 @@ use generic_array::GenericArray;
 #[bench]
 pub fn encrypt_1_256(bh: &mut Bencher) {
     let key = Default::default();
-    let state = threefish::Threefish256::new(&key);
+    let state = threefish_cipher::Threefish256::new(&key);
     let mut input = [1u8; 32];
     let input = GenericArray::from_mut_slice(&mut input);
     bh.iter(|| state.encrypt_block(input));
@@ -23,7 +23,7 @@ pub fn encrypt_1_256(bh: &mut Bencher) {
 #[bench]
 pub fn encrypt_2_512(bh: &mut Bencher) {
     let key = Default::default();
-    let state = threefish::Threefish512::new(&key);
+    let state = threefish_cipher::Threefish512::new(&key);
     let mut input = [1u8; 64];
     let input = GenericArray::from_mut_slice(&mut input);
     bh.iter(|| state.encrypt_block(input));
@@ -33,7 +33,7 @@ pub fn encrypt_2_512(bh: &mut Bencher) {
 #[bench]
 pub fn encrypt_3_1024(bh: &mut Bencher) {
     let key = Default::default();
-    let state = threefish::Threefish1024::new(&key);
+    let state = threefish_cipher::Threefish1024::new(&key);
     let mut input = [1u8; 128];
     let input = GenericArray::from_mut_slice(&mut input);
     bh.iter(|| state.encrypt_block(input));
