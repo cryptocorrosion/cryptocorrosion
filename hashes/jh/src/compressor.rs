@@ -155,6 +155,18 @@ mod sse2 {
     #[repr(transparent)]
     #[derive(Copy, Clone)]
     pub struct U128(__m128i);
+    macro_rules! swapi {
+        ($x:expr, $i:expr, $k:expr) => {
+            unsafe {
+                const K: u8 = $k;
+                let k = _mm_set1_epi8(K as i8);
+                U128(_mm_or_si128(
+                    _mm_srli_epi16(_mm_and_si128($x.0, k), $i),
+                    _mm_and_si128(_mm_slli_epi16($x.0, $i), k),
+                ))
+            }
+        };
+    }
     impl U128 {
         #[inline(always)]
         fn const8(k: u8) -> Self {
@@ -172,30 +184,15 @@ mod sse2 {
         }
         #[inline(always)]
         pub fn swap1(self) -> Self {
-            U128(unsafe {
-                _mm_or_si128(
-                    _mm_srli_epi16((self & U128::const8(0xaa)).0, 1),
-                    _mm_slli_epi16((self & U128::const8(0x55)).0, 1),
-                )
-            })
+            swapi!(self, 1, 0xaa)
         }
         #[inline(always)]
         pub fn swap2(self) -> Self {
-            U128(unsafe {
-                _mm_or_si128(
-                    _mm_srli_epi16((self & U128::const8(0xcc)).0, 2),
-                    _mm_slli_epi16((self & U128::const8(0x33)).0, 2),
-                )
-            })
+            swapi!(self, 2, 0xcc)
         }
         #[inline(always)]
         pub fn swap4(self) -> Self {
-            U128(unsafe {
-                _mm_or_si128(
-                    _mm_srli_epi16((self & U128::const8(0xf0)).0, 4),
-                    _mm_slli_epi16((self & U128::const8(0x0f)).0, 4),
-                )
-            })
+            swapi!(self, 4, 0xf0)
         }
         #[cfg(target_feature = "ssse3")]
         #[inline(always)]
@@ -221,7 +218,9 @@ mod sse2 {
         #[cfg(not(target_feature = "ssse3"))]
         #[inline(always)]
         pub fn swap16(self) -> Self {
-            U128(unsafe { _mm_or_si128(_mm_slli_epi32(self.0, 16), _mm_srli_epi32(self.0, 16)) })
+            U128(unsafe {
+                _mm_shufflehi_epi16(_mm_shufflelo_epi16(self.0, 0b10110001), 0b10110001)
+            })
         }
         #[inline(always)]
         pub fn swap32(self) -> Self {
