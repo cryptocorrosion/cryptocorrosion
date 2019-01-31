@@ -18,8 +18,6 @@ pub use digest::Digest;
 #[repr(C)]
 struct State<T> {
     h: [T; 8],
-    t: [T; 2],
-    nullt: bool,
 }
 
 macro_rules! define_compressor {
@@ -31,15 +29,7 @@ macro_rules! define_compressor {
         }
 
         impl $compressor {
-            fn increase_count(&mut self, count: $word) {
-                let (new_t0, carry) = self.state.t[0].overflowing_add(count * 8);
-                self.state.t[0] = new_t0;
-                if carry {
-                    self.state.t[1] += 1;
-                }
-            }
-
-            fn put_block(&mut self, block: &GenericArray<u8, $Bufsz>) {
+            fn put_block(&mut self, block: &GenericArray<u8, $Bufsz>, t: ($word, $word)) {
                 const U: [$word; 16] = $uval;
 
                 #[inline(always)]
@@ -79,13 +69,10 @@ macro_rules! define_compressor {
                 &v[..8].copy_from_slice(&self.state.h);
                 &v[8..].copy_from_slice(&U[..8]);
 
-                // don't xor t when the block is only padding
-                if !self.state.nullt {
-                    v[12] ^= self.state.t[0];
-                    v[13] ^= self.state.t[0];
-                    v[14] ^= self.state.t[1];
-                    v[15] ^= self.state.t[1];
-                }
+                v[12] ^= t.0;
+                v[13] ^= t.0;
+                v[14] ^= t.1;
+                v[15] ^= t.1;
 
                 for sigma in &SIGMA[..$rounds] {
                     // column step
@@ -115,6 +102,17 @@ macro_rules! define_hasher {
         pub struct $name {
             compressor: $compressor,
             buffer: BlockBuffer<$Bufsz>,
+            t: ($word, $word),
+        }
+
+        impl $name {
+            fn increase_count(t: &mut ($word, $word), count: $word) {
+                let (new_t0, carry) = t.0.overflowing_add(count * 8);
+                t.0 = new_t0;
+                if carry {
+                    t.1 += 1;
+                }
+            }
         }
 
         impl core::fmt::Debug for $name {
@@ -130,13 +128,10 @@ macro_rules! define_hasher {
             fn default() -> Self {
                 Self {
                     compressor: $compressor {
-                        state: State::<$word> {
-                            h: $iv,
-                            t: [0; 2],
-                            nullt: false,
-                        },
+                        state: State::<$word> { h: $iv },
                     },
                     buffer: BlockBuffer::default(),
+                    t: (0, 0),
                 }
             }
         }
@@ -148,9 +143,10 @@ macro_rules! define_hasher {
         impl digest::Input for $name {
             fn input<T: AsRef<[u8]>>(&mut self, data: T) {
                 let compressor = &mut self.compressor;
+                let t = &mut self.t;
                 self.buffer.input(data.as_ref(), |block| {
-                    compressor.increase_count((mem::size_of::<$word>() * 16) as $word);
-                    compressor.put_block(block);
+                    Self::increase_count(t, (mem::size_of::<$word>() * 16) as $word);
+                    compressor.put_block(block, *t);
                 });
             }
         }
@@ -161,12 +157,13 @@ macro_rules! define_hasher {
             fn fixed_result(self) -> GenericArray<u8, $Bytes> {
                 let mut compressor = self.compressor;
                 let mut buffer = self.buffer;
+                let mut t = self.t;
 
-                compressor.increase_count(buffer.position() as $word);
+                Self::increase_count(&mut t, buffer.position() as $word);
 
                 let mut msglen = [0u8; $buf / 8];
-                $serializer(&mut msglen[..$buf / 16], compressor.state.t[1]);
-                $serializer(&mut msglen[$buf / 16..], compressor.state.t[0]);
+                $serializer(&mut msglen[..$buf / 16], t.1);
+                $serializer(&mut msglen[$buf / 16..], t.0);
 
                 let footerlen = 1 + 2 * mem::size_of::<$word>();
 
@@ -184,18 +181,21 @@ macro_rules! define_hasher {
                 let extra_block = buffer.position() + footerlen > $buf;
                 if extra_block {
                     let pad = $buf - buffer.position();
-                    buffer.input(&PADDING[..pad], |block| compressor.put_block(block));
+                    buffer.input(&PADDING[..pad], |block| compressor.put_block(block, t));
                     debug_assert_eq!(buffer.position(), 0);
                 }
 
                 // pad last block up to footer start point
-                compressor.state.nullt = buffer.position() == 0;
+                if buffer.position() == 0 {
+                    // don't xor t when the block is only padding
+                    t = (0, 0);
+                }
                 // skip begin-padding byte if continuing padding
                 let x = extra_block as usize;
                 let (start, end) = (x, x + ($buf - footerlen - buffer.position()));
                 buffer.input(&PADDING[start..end], |_| unreachable!());
                 buffer.input(&[magic], |_| unreachable!());
-                buffer.input(&msglen, |block| compressor.put_block(block));
+                buffer.input(&msglen, |block| compressor.put_block(block, t));
                 debug_assert_eq!(buffer.position(), 0);
 
                 let mut out = GenericArray::default();
