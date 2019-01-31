@@ -29,13 +29,13 @@ fn inv_mix(r: u32, y: (u64, u64)) -> (u64, u64) {
 }
 
 fn read_u64v_le(ns: &mut [u64], buf: &[u8]) {
-    for (c, n) in buf.chunks(8).zip(ns) {
+    for (c, n) in buf.chunks_exact(8).zip(ns) {
         *n = LE::read_u64(c);
     }
 }
 
 fn write_u64v_le(buf: &mut [u8], ns: &[u64]) {
-    for (c, n) in buf.chunks_mut(8).zip(ns) {
+    for (c, n) in buf.chunks_exact_mut(8).zip(ns) {
         LE::write_u64(c, *n);
     }
 }
