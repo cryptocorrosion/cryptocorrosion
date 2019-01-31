@@ -68,7 +68,10 @@ macro_rules! define_compressor {
                 }
 
                 let mut m = [0; 16];
-                for (mx, b) in m.iter_mut().zip(block.chunks(mem::size_of::<$word>())) {
+                for (mx, b) in m
+                    .iter_mut()
+                    .zip(block.chunks_exact(mem::size_of::<$word>()))
+                {
                     *mx = $deserializer(b);
                 }
 
@@ -200,7 +203,7 @@ macro_rules! define_hasher {
                     .state
                     .h
                     .iter()
-                    .zip(out.chunks_mut(mem::size_of::<$word>()))
+                    .zip(out.chunks_exact_mut(mem::size_of::<$word>()))
                 {
                     $serializer(out, *h);
                 }
