@@ -1,7 +1,7 @@
 #![allow(non_upper_case_globals)]
 
 use core::ops::{BitAnd, BitOr, BitXor, BitXorAssign};
-use core::{mem, ptr};
+use core::ptr;
 use digest::generic_array::typenum::U64;
 use digest::generic_array::GenericArray;
 
@@ -429,6 +429,11 @@ unsafe fn l(mut y: X8) -> X8 {
     y
 }
 
+union X2Bytes {
+    x2: X2,
+    bytes: [u8; 32],
+}
+
 #[inline(always)]
 unsafe fn f8(state: &mut X8, data: *const U128) {
     let mut y = *state;
@@ -436,10 +441,9 @@ unsafe fn f8(state: &mut X8, data: *const U128) {
     y.1 ^= ptr::read_unaligned(data.offset(1));
     y.2 ^= ptr::read_unaligned(data.offset(2));
     y.3 ^= ptr::read_unaligned(data.offset(3));
-    let roundconst: [X2; 42] = mem::transmute(E8_BITSLICE_ROUNDCONSTANT);
-    for rc in roundconst.chunks_exact(7) {
+    for rc in E8_BITSLICE_ROUNDCONSTANT.chunks_exact(7) {
         unroll7!(j, {
-            y = ss(y, rc[j]);
+            y = ss(y, X2Bytes { bytes: rc[j] }.x2);
             y = l(y);
             let f = match j {
                 0 => U128::swap1,
@@ -461,12 +465,15 @@ unsafe fn f8(state: &mut X8, data: *const U128) {
     *state = y;
 }
 
-#[derive(Clone)]
-pub struct Compressor(X8);
+#[derive(Clone, Copy)]
+pub union Compressor {
+    cv: X8,
+    bytes: [u8; 128],
+}
 impl Compressor {
     #[inline]
-    pub fn new(iv: [u8; 128]) -> Self {
-        Compressor(unsafe { mem::transmute(iv) })
+    pub fn new(bytes: [u8; 128]) -> Self {
+        Compressor { bytes }
     }
     #[inline]
     #[cfg(not(all(
@@ -476,7 +483,7 @@ impl Compressor {
     )))]
     pub fn input(&mut self, data: &GenericArray<u8, U64>) {
         unsafe {
-            f8(&mut self.0, data.as_ptr() as *const _);
+            f8(&mut self.cv, data.as_ptr() as *const _);
         }
     }
     #[inline]
@@ -514,11 +521,11 @@ impl Compressor {
             }
         }
         unsafe {
-            IMPL(&mut self.0, data.as_ptr() as *const _);
+            IMPL(&mut self.cv, data.as_ptr() as *const _);
         }
     }
     #[inline]
     pub fn finalize(self) -> [u8; 128] {
-        unsafe { mem::transmute(self.0) }
+        unsafe { self.bytes }
     }
 }

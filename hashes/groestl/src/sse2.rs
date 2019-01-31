@@ -324,7 +324,7 @@ unsafe fn of512_impl(cv: &mut X4) {
 
 #[inline(always)]
 unsafe fn init512_impl(cv: X4) -> X4 {
-    core::mem::transmute(transpose_a(core::mem::transmute(cv)))
+    transpose_a(cv)
 }
 
 #[inline(always)]
@@ -455,7 +455,7 @@ unsafe fn rounds_q(mut x: X8) -> X8 {
 
 #[inline(always)]
 unsafe fn init1024_impl(cv: X8) -> X8 {
-    core::mem::transmute(transpose(core::mem::transmute(cv)))
+    transpose(cv)
 }
 
 #[inline(always)]

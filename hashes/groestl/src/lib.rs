@@ -17,7 +17,6 @@ use block_buffer::generic_array::typenum::{
 use block_buffer::generic_array::GenericArray as BBGenericArray;
 use block_buffer::BlockBuffer;
 use core::fmt::{Debug, Formatter, Result};
-use core::mem;
 use digest::generic_array::GenericArray as DGenericArray;
 pub use digest::Digest;
 
@@ -28,13 +27,17 @@ use sse2::{init1024, init512, of1024, of512, tf1024, tf512};
 struct Align16<T>(T);
 
 type Block512 = [u64; 512 / 64];
+union CvBytes512 {
+    block: Block512,
+    cv: sse2::X4,
+}
 #[derive(Clone)]
 struct Compressor512 {
     cv: sse2::X4,
 }
 impl Compressor512 {
     fn new(block: Block512) -> Self {
-        let cv = unsafe { init512(mem::transmute(block)) };
+        let cv = init512(unsafe { CvBytes512 { block }.cv });
         Compressor512 { cv }
     }
     fn input(&mut self, data: &BBGenericArray<u8, U64>) {
@@ -42,18 +45,22 @@ impl Compressor512 {
     }
     fn finalize(mut self) -> Block512 {
         of512(&mut self.cv);
-        unsafe { mem::transmute(self.cv) }
+        unsafe { CvBytes512 { cv: self.cv }.block }
     }
 }
 
 type Block1024 = [u64; 1024 / 64];
+union CvBytes1024 {
+    block: Block1024,
+    cv: sse2::X8,
+}
 #[derive(Clone)]
 struct Compressor1024 {
     cv: sse2::X8,
 }
 impl Compressor1024 {
     fn new(block: Block1024) -> Self {
-        let cv = unsafe { init1024(mem::transmute(block)) };
+        let cv = init1024(unsafe { CvBytes1024 { block }.cv });
         Compressor1024 { cv }
     }
     fn input(&mut self, data: &BBGenericArray<u8, U128>) {
@@ -61,7 +68,7 @@ impl Compressor1024 {
     }
     fn finalize(mut self) -> Block1024 {
         of1024(&mut self.cv);
-        unsafe { mem::transmute(self.cv) }
+        unsafe { CvBytes1024 { cv: self.cv }.block }
     }
 }
 
