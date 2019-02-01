@@ -1,9 +1,16 @@
 #![allow(non_upper_case_globals)]
 
-use core::ops::{BitAnd, BitOr, BitXor, BitXorAssign};
+#[cfg(feature = "packed_simd")]
+use __packed_simd_crate::{u128x1, u128x2};
 use core::ptr;
+#[allow(unused)]
+use crypto_simd::*;
 use digest::generic_array::typenum::U64;
 use digest::generic_array::GenericArray;
+#[cfg(not(any(feature = "packed_simd", feature = "simd")))]
+use ppv_null::{u128x1, u128x2};
+#[cfg(all(feature = "simd", not(feature = "packed_simd")))]
+use simd::{u128x1, u128x2};
 
 const E8_BITSLICE_ROUNDCONSTANT: [[u8; 32]; 42] = [
     hex!("72d5dea2df15f8677b84150ab723155781abd6904d5a87f64e9f4fc5c3d12b40"),
@@ -63,346 +70,49 @@ macro_rules! unroll7 {
     };
 }
 
-#[cfg(not(all(feature = "simd", target_feature = "sse2")))]
-mod generic {
-    use super::*;
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct U128(u64, u64);
-    impl U128 {
-        #[inline(always)]
-        pub fn const_ff() -> Self {
-            U128(0xffffffffffffffff, 0xffffffffffffffff)
-        }
-        #[inline(always)]
-        pub fn andnot(self, rhs: Self) -> Self {
-            U128(!self.0 & rhs.0, !self.1 & rhs.1)
-        }
-        #[inline(always)]
-        fn swap(self, l: u64, r: u64, i: u32) -> Self {
-            U128(
-                ((self.0 & l) >> i) | ((self.0 & r) << i),
-                ((self.1 & l) >> i) | ((self.1 & r) << i),
-            )
-        }
-        #[inline(always)]
-        pub fn swap1(self) -> Self {
-            self.swap(0xaaaaaaaaaaaaaaaa, 0x5555555555555555, 1)
-        }
-        #[inline(always)]
-        pub fn swap2(self) -> Self {
-            self.swap(0xcccccccccccccccc, 0x3333333333333333, 2)
-        }
-        #[inline(always)]
-        pub fn swap4(self) -> Self {
-            self.swap(0xf0f0f0f0f0f0f0f0, 0x0f0f0f0f0f0f0f0f, 4)
-        }
-        #[inline(always)]
-        pub fn swap8(self) -> Self {
-            self.swap(0xff00ff00ff00ff00, 0x00ff00ff00ff00ff, 8)
-        }
-        #[inline(always)]
-        pub fn swap16(self) -> Self {
-            self.swap(0xffff0000ffff0000, 0x0000ffff0000ffff, 16)
-        }
-        #[inline(always)]
-        pub fn swap32(self) -> Self {
-            self.swap(0xffffffff00000000, 0x00000000ffffffff, 32)
-        }
-        #[inline(always)]
-        pub fn swap64(self) -> Self {
-            U128(self.1, self.0)
-        }
-    }
-    impl BitXor for U128 {
-        type Output = U128;
-        #[inline(always)]
-        fn bitxor(self, rhs: Self) -> Self::Output {
-            U128(self.0 ^ rhs.0, self.1 ^ rhs.1)
-        }
-    }
-    impl BitOr for U128 {
-        type Output = Self;
-        #[inline(always)]
-        fn bitor(self, rhs: Self) -> Self::Output {
-            U128(self.0 | rhs.0, self.1 | rhs.1)
-        }
-    }
-    impl BitAnd for U128 {
-        type Output = Self;
-        #[inline(always)]
-        fn bitand(self, rhs: Self) -> Self::Output {
-            U128(self.0 & rhs.0, self.1 & rhs.1)
-        }
-    }
-    impl BitXorAssign for U128 {
-        #[inline(always)]
-        fn bitxor_assign(&mut self, rhs: Self) {
-            *self = *self ^ rhs;
-        }
-    }
-}
-#[cfg(not(all(feature = "simd", target_feature = "sse2")))]
-use generic::*;
-
-#[cfg(all(feature = "simd", target_feature = "sse2"))]
-mod sse2 {
-    use super::*;
-    #[cfg(target_arch = "x86")]
-    use core::arch::x86::*;
-    #[cfg(target_arch = "x86_64")]
-    use core::arch::x86_64::*;
-    #[repr(transparent)]
-    #[derive(Copy, Clone)]
-    pub struct U128(__m128i);
-    macro_rules! swapi {
-        ($x:expr, $i:expr, $k:expr) => {
-            unsafe {
-                const K: u8 = $k;
-                let k = _mm_set1_epi8(K as i8);
-                U128(_mm_or_si128(
-                    _mm_srli_epi16(_mm_and_si128($x.0, k), $i),
-                    _mm_and_si128(_mm_slli_epi16($x.0, $i), k),
-                ))
-            }
-        };
-    }
-    impl U128 {
-        #[inline(always)]
-        fn const8(k: u8) -> Self {
-            U128(unsafe { _mm_set1_epi8(k as i8) })
-        }
-        #[cfg(not(all(feature = "avx2", target_feature = "avx2")))]
-        #[inline(always)]
-        pub fn const_ff() -> Self {
-            Self::const8(0xff)
-        }
-        #[cfg(not(all(feature = "avx2", target_feature = "avx2")))]
-        #[inline(always)]
-        pub fn andnot(self, rhs: Self) -> Self {
-            U128(unsafe { _mm_andnot_si128(self.0, rhs.0) })
-        }
-        #[inline(always)]
-        pub fn swap1(self) -> Self {
-            swapi!(self, 1, 0xaa)
-        }
-        #[inline(always)]
-        pub fn swap2(self) -> Self {
-            swapi!(self, 2, 0xcc)
-        }
-        #[inline(always)]
-        pub fn swap4(self) -> Self {
-            swapi!(self, 4, 0xf0)
-        }
-        #[cfg(target_feature = "ssse3")]
-        #[inline(always)]
-        pub fn swap8(self) -> Self {
-            U128(unsafe {
-                let k = _mm_set_epi64x(0x0e0f_0c0d_0a0b_0809, 0x0607_0405_0203_0001);
-                _mm_shuffle_epi8(self.0, k)
-            })
-        }
-        #[cfg(not(target_feature = "ssse3"))]
-        #[inline(always)]
-        pub fn swap8(self) -> Self {
-            U128(unsafe { _mm_or_si128(_mm_slli_epi16(self.0, 8), _mm_srli_epi16(self.0, 8)) })
-        }
-        #[cfg(target_feature = "ssse3")]
-        #[inline(always)]
-        pub fn swap16(self) -> Self {
-            U128(unsafe {
-                let k = _mm_set_epi64x(0x0d0c_0f0e_0908_0b0a, 0x0504_0706_0100_0302);
-                _mm_shuffle_epi8(self.0, k)
-            })
-        }
-        #[cfg(not(target_feature = "ssse3"))]
-        #[inline(always)]
-        pub fn swap16(self) -> Self {
-            U128(unsafe {
-                _mm_shufflehi_epi16(_mm_shufflelo_epi16(self.0, 0b10110001), 0b10110001)
-            })
-        }
-        #[inline(always)]
-        pub fn swap32(self) -> Self {
-            U128(unsafe { _mm_shuffle_epi32(self.0, 0b10110001) })
-        }
-        #[inline(always)]
-        pub fn swap64(self) -> Self {
-            U128(unsafe { _mm_shuffle_epi32(self.0, 0b01001110) })
-        }
-        #[cfg(all(feature = "avx2", target_feature = "avx2"))]
-        #[inline(always)]
-        pub fn from_raw(x: __m128i) -> Self {
-            U128(x)
-        }
-        #[cfg(all(feature = "avx2", target_feature = "avx2"))]
-        #[inline(always)]
-        pub fn raw(self) -> __m128i {
-            self.0
-        }
-    }
-    impl BitXor for U128 {
-        type Output = U128;
-        #[inline(always)]
-        fn bitxor(self, rhs: Self) -> Self::Output {
-            U128(unsafe { _mm_xor_si128(self.0, rhs.0) })
-        }
-    }
-    impl BitOr for U128 {
-        type Output = Self;
-        #[inline(always)]
-        fn bitor(self, rhs: Self) -> Self::Output {
-            U128(unsafe { _mm_or_si128(self.0, rhs.0) })
-        }
-    }
-    impl BitAnd for U128 {
-        type Output = Self;
-        #[inline(always)]
-        fn bitand(self, rhs: Self) -> Self::Output {
-            U128(unsafe { _mm_and_si128(self.0, rhs.0) })
-        }
-    }
-    impl BitXorAssign for U128 {
-        #[inline(always)]
-        fn bitxor_assign(&mut self, rhs: Self) {
-            *self = *self ^ rhs;
-        }
-    }
-}
-#[cfg(all(feature = "simd", target_feature = "sse2"))]
-use sse2::*;
-
-#[cfg(not(all(feature = "avx2", target_feature = "avx2")))]
-mod single_channel {
-    use super::*;
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct X2(U128, U128);
-    impl X2 {
-        #[inline(always)]
-        pub fn new(a: U128, b: U128) -> Self {
-            X2(a, b)
-        }
-        #[inline(always)]
-        pub fn const_ff() -> Self {
-            X2(U128::const_ff(), U128::const_ff())
-        }
-        #[inline(always)]
-        pub fn andnot(self, rhs: Self) -> Self {
-            X2(self.0.andnot(rhs.0), self.1.andnot(rhs.1))
-        }
-        #[inline(always)]
-        pub fn split(self) -> (U128, U128) {
-            (self.0, self.1)
-        }
-    }
-    impl BitXorAssign for X2 {
-        #[inline(always)]
-        fn bitxor_assign(&mut self, rhs: Self) {
-            self.0 = self.0 ^ rhs.0;
-            self.1 = self.1 ^ rhs.1;
-        }
-    }
-    impl BitOr for X2 {
-        type Output = Self;
-        #[inline(always)]
-        fn bitor(self, rhs: Self) -> Self::Output {
-            X2(self.0 | rhs.0, self.1 | rhs.1)
-        }
-    }
-    impl BitAnd for X2 {
-        type Output = Self;
-        #[inline(always)]
-        fn bitand(self, rhs: Self) -> Self::Output {
-            X2(self.0 & rhs.0, self.1 & rhs.1)
-        }
-    }
-}
-#[cfg(not(all(feature = "avx2", target_feature = "avx2")))]
-use single_channel::X2;
-
-#[cfg(all(feature = "avx2", target_feature = "avx2"))]
-mod double_channel {
-    use super::*;
-    #[cfg(target_arch = "x86")]
-    use core::arch::x86::*;
-    #[cfg(target_arch = "x86_64")]
-    use core::arch::x86_64::*;
-    #[repr(transparent)]
-    #[derive(Copy, Clone)]
-    pub struct X2(__m256i);
-    impl X2 {
-        #[inline(always)]
-        pub fn new(a: U128, b: U128) -> Self {
-            X2(unsafe { _mm256_inserti128_si256(_mm256_castsi128_si256(a.raw()), b.raw(), 1) })
-        }
-        #[inline(always)]
-        pub fn const_ff() -> Self {
-            X2(unsafe { _mm256_set1_epi8(0xffu8 as i8) })
-        }
-        #[inline(always)]
-        pub fn andnot(self, rhs: Self) -> Self {
-            X2(unsafe { _mm256_andnot_si256(self.0, rhs.0) })
-        }
-        #[inline(always)]
-        pub fn split(self) -> (U128, U128) {
-            unsafe {
-                (
-                    U128::from_raw(_mm256_castsi256_si128(self.0)),
-                    U128::from_raw(_mm256_extracti128_si256(self.0, 1)),
-                )
-            }
-        }
-    }
-    impl BitXorAssign for X2 {
-        #[inline(always)]
-        fn bitxor_assign(&mut self, rhs: Self) {
-            self.0 = unsafe { _mm256_xor_si256(self.0, rhs.0) };
-        }
-    }
-    impl BitOr for X2 {
-        type Output = Self;
-        #[inline(always)]
-        fn bitor(self, rhs: Self) -> Self::Output {
-            X2(unsafe { _mm256_or_si256(self.0, rhs.0) })
-        }
-    }
-    impl BitAnd for X2 {
-        type Output = Self;
-        #[inline(always)]
-        fn bitand(self, rhs: Self) -> Self::Output {
-            X2(unsafe { _mm256_and_si256(self.0, rhs.0) })
-        }
-    }
-}
-#[cfg(all(feature = "avx2", target_feature = "avx2"))]
-use double_channel::X2;
-
 #[repr(C)]
 #[derive(Copy, Clone)]
-struct X8(U128, U128, U128, U128, U128, U128, U128, U128);
+struct X8(
+    u128x1,
+    u128x1,
+    u128x1,
+    u128x1,
+    u128x1,
+    u128x1,
+    u128x1,
+    u128x1,
+);
 impl X8 {
     #[inline(always)]
-    fn unzip(self) -> (X2, X2, X2, X2) {
+    fn unzip(self) -> (u128x2, u128x2, u128x2, u128x2) {
         (
-            X2::new(self.0, self.1),
-            X2::new(self.2, self.3),
-            X2::new(self.4, self.5),
-            X2::new(self.6, self.7),
+            u128x2::new(self.0.extract(0), self.1.extract(0)),
+            u128x2::new(self.2.extract(0), self.3.extract(0)),
+            u128x2::new(self.4.extract(0), self.5.extract(0)),
+            u128x2::new(self.6.extract(0), self.7.extract(0)),
         )
     }
     #[inline(always)]
-    fn zip((a, b, c, d): (X2, X2, X2, X2)) -> Self {
-        let (a, b, c, d) = (a.split(), b.split(), c.split(), d.split());
-        X8(a.0, a.1, b.0, b.1, c.0, c.1, d.0, d.1)
+    fn zip((a, b, c, d): (u128x2, u128x2, u128x2, u128x2)) -> Self {
+        X8(
+            u128x1::new(a.extract(0)),
+            u128x1::new(a.extract(1)),
+            u128x1::new(b.extract(0)),
+            u128x1::new(b.extract(1)),
+            u128x1::new(c.extract(0)),
+            u128x1::new(c.extract(1)),
+            u128x1::new(d.extract(0)),
+            u128x1::new(d.extract(1)),
+        )
     }
 }
 
 /// two Sboxes computed in parallel; each Sbox implements S0 and S1, selected by a constant bit
 #[inline(always)]
-unsafe fn ss(state: X8, mut k: X2) -> X8 {
+unsafe fn ss(state: X8, mut k: u128x2) -> X8 {
     let mut m = state.unzip();
-    m.3 ^= X2::const_ff();
+    // TODO: replace ! with andnot ops?
+    m.3 = !m.3;
     m.0 ^= m.2.andnot(k);
     k ^= m.0 & m.1;
     m.0 ^= m.3 & m.2;
@@ -430,12 +140,12 @@ unsafe fn l(mut y: X8) -> X8 {
 }
 
 union X2Bytes {
-    x2: X2,
+    x2: u128x2,
     bytes: [u8; 32],
 }
 
 #[inline(always)]
-unsafe fn f8(state: &mut X8, data: *const U128) {
+unsafe fn f8(state: &mut X8, data: *const u128x1) {
     let mut y = *state;
     y.0 ^= ptr::read_unaligned(data);
     y.1 ^= ptr::read_unaligned(data.offset(1));
@@ -446,13 +156,13 @@ unsafe fn f8(state: &mut X8, data: *const U128) {
             y = ss(y, X2Bytes { bytes: rc[j] }.x2);
             y = l(y);
             let f = match j {
-                0 => U128::swap1,
-                1 => U128::swap2,
-                2 => U128::swap4,
-                3 => U128::swap8,
-                4 => U128::swap16,
-                5 => U128::swap32,
-                6 => U128::swap64,
+                0 => u128x1::swap1,
+                1 => u128x1::swap2,
+                2 => u128x1::swap4,
+                3 => u128x1::swap8,
+                4 => u128x1::swap16,
+                5 => u128x1::swap32,
+                6 => u128x1::swap64,
                 _ => unreachable!(),
             };
             y = X8(y.0, f(y.1), y.2, f(y.3), y.4, f(y.5), y.6, f(y.7));
@@ -493,26 +203,26 @@ impl Compressor {
         any(target_arch = "x86", target_arch = "x86_64")
     ))]
     pub fn input(&mut self, data: &GenericArray<u8, U64>) {
-        type F8 = unsafe fn(state: &mut X8, data: *const U128);
+        type F8 = unsafe fn(state: &mut X8, data: *const u128x1);
         lazy_static! {
             static ref IMPL: F8 = { select_impl() };
         }
         fn select_impl() -> F8 {
             if cfg!(feature = "avx2") && is_x86_feature_detected!("avx2") {
                 #[target_feature(enable = "avx2")]
-                unsafe fn f8_avx2(state: &mut X8, data: *const U128) {
+                unsafe fn f8_avx2(state: &mut X8, data: *const u128x1) {
                     f8(state, data);
                 }
                 f8_avx2
             } else if is_x86_feature_detected!("ssse3") {
                 #[target_feature(enable = "ssse3")]
-                unsafe fn f8_ssse3(state: &mut X8, data: *const U128) {
+                unsafe fn f8_ssse3(state: &mut X8, data: *const u128x1) {
                     f8(state, data);
                 }
                 f8_ssse3
             } else if is_x86_feature_detected!("sse2") {
                 #[target_feature(enable = "sse2")]
-                unsafe fn f8_sse2(state: &mut X8, data: *const U128) {
+                unsafe fn f8_sse2(state: &mut X8, data: *const u128x1) {
                     f8(state, data);
                 }
                 f8_sse2

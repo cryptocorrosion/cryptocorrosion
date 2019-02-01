@@ -4,12 +4,19 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+extern crate crypto_simd;
 pub extern crate digest;
 #[macro_use]
 extern crate hex_literal;
 #[cfg(all(feature = "std", feature = "simd"))]
 #[macro_use]
 extern crate lazy_static;
+#[cfg(feature = "packed_simd")]
+extern crate __packed_simd_crate;
+#[cfg(not(any(feature = "simd", feature = "packed_simd")))]
+extern crate ppv_null;
+#[cfg(all(feature = "simd", not(feature = "packed_simd")))]
+extern crate simd;
 
 mod compressor;
 mod consts;

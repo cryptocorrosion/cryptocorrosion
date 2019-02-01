@@ -5,7 +5,13 @@ members = [
     "hashes/groestl",
     "hashes/jh",
     "hashes/skein",
+    "utils-simd/crypto-simd",
+    "utils-simd/ppv-lite86",
+    "utils-simd/ppv-null",
 ]
 
 [patch.crates-io]
+crypto-simd = { path = "utils-simd/crypto-simd" }
+ppv-lite86 = { path = "utils-simd/ppv-lite86" }
+ppv-null = { path = "utils-simd/ppv-null" }
 threefish-cipher = { path = "block-ciphers/threefish" }

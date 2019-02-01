@@ -4,28 +4,51 @@
 
 #![no_std]
 
+#[cfg(feature = "packed_simd")]
+extern crate __packed_simd_crate;
+/// ChaCha: 32-bit stream cipher (modified Salsa)
+/// - unusual feature: constant time seek
+/// - different enough from Salsa not to share impl
+///
+/// BLAKE: built on ChaCha
+/// - add (tweaked) message words each round
+/// - reverse rotations
+/// - extension to 64-bit is trivial (change word size, rotation amounts, nr rounds)
+///
+/// BLAKE2: modified BLAKE
+/// - don't tweak message words each round
+/// - change rotation constants
+/// - simpler padding; XOR param block into IVs
+/// - reduced rounds
 extern crate block_buffer;
+extern crate crypto_simd;
 pub extern crate digest;
+#[cfg(not(any(feature = "simd", feature = "packed_simd")))]
+extern crate ppv_null;
+#[cfg(all(feature = "simd", not(feature = "packed_simd")))]
+extern crate simd;
 
 mod consts;
 
+#[cfg(feature = "packed_simd")]
+use __packed_simd_crate::{u32x4, u64x4};
 use block_buffer::BlockBuffer;
 use core::mem;
+use crypto_simd::*;
+use digest::generic_array::typenum::{PartialDiv, Unsigned, U2};
 use digest::generic_array::GenericArray;
 pub use digest::Digest;
-
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-struct State<T> {
-    h: [T; 8],
-}
+#[cfg(not(any(feature = "simd", feature = "packed_simd")))]
+use ppv_null::{u32x4, u64x4};
+#[cfg(all(feature = "simd", not(feature = "packed_simd")))]
+use simd::{u32x4, u64x4};
 
 macro_rules! define_compressor {
     ($compressor:ident, $word:ident, $Bufsz:ty, $deserializer:path, $uval:expr,
-     $rounds:expr, $shift0:expr, $shift1:expr, $shift2: expr, $shift3: expr) => {
-        #[derive(Clone, Copy, Debug)]
+     $rounds:expr, $shift0:expr, $shift1:expr, $shift2: expr, $shift3: expr, $X4:ident) => {
+        #[derive(Debug, Clone, Copy)]
         struct $compressor {
-            state: State<$word>,
+            h: [$word; 8],
         }
 
         impl $compressor {
@@ -33,28 +56,33 @@ macro_rules! define_compressor {
                 const U: [$word; 16] = $uval;
 
                 #[inline(always)]
-                fn g(
-                    v: &mut [$word; 16],
-                    m: &[$word; 16],
-                    sigma: &[u8; 16],
-                    a: usize,
-                    b: usize,
-                    c: usize,
-                    d: usize,
-                    e: usize,
-                ) {
-                    v[a] = v[a]
-                        .wrapping_add(m[sigma[e] as usize] ^ U[sigma[e + 1] as usize])
-                        .wrapping_add(v[b]);
-                    v[d] = (v[d] ^ v[a]).rotate_right($shift0);
-                    v[c] = v[c].wrapping_add(v[d]);
-                    v[b] = (v[b] ^ v[c]).rotate_right($shift1);
-                    v[a] = v[a]
-                        .wrapping_add(m[sigma[e + 1] as usize] ^ U[sigma[e] as usize])
-                        .wrapping_add(v[b]);
-                    v[d] = (v[d] ^ v[a]).rotate_right($shift2);
-                    v[c] = v[c].wrapping_add(v[d]);
-                    v[b] = (v[b] ^ v[c]).rotate_right($shift3);
+                fn round((mut a, mut b, mut c, mut d): ($X4, $X4, $X4, $X4), m0: $X4, m1: $X4) -> ($X4, $X4, $X4, $X4)
+                {
+                    a += m0;
+                    a += b;
+                    d ^= a;
+                    d = d.splat_rotate_right($shift0);
+                    c += d;
+                    b ^= c;
+                    b = b.splat_rotate_right($shift1);
+                    a += m1;
+                    a += b;
+                    d ^= a;
+                    d = d.splat_rotate_right($shift2);
+                    c += d;
+                    b ^= c;
+                    b = b.splat_rotate_right($shift3);
+                    (a, b, c, d)
+                }
+
+                #[inline(always)]
+                fn diagonalize((a, b, c, d): ($X4, $X4, $X4, $X4)) -> ($X4, $X4, $X4, $X4) {
+                    (a, b.rotate_words_right(3), c.rotate_words_right(2), d.rotate_words_right(1))
+                }
+
+                #[inline(always)]
+                fn undiagonalize((a, b, c, d): ($X4, $X4, $X4, $X4)) -> ($X4, $X4, $X4, $X4) {
+                    (a, b.rotate_words_right(1), c.rotate_words_right(2), d.rotate_words_right(3))
                 }
 
                 let mut m = [0; 16];
@@ -65,31 +93,37 @@ macro_rules! define_compressor {
                     *mx = $deserializer(b);
                 }
 
-                let mut v = [0; 16];
-                &v[..8].copy_from_slice(&self.state.h);
-                &v[8..].copy_from_slice(&U[..8]);
-
-                v[12] ^= t.0;
-                v[13] ^= t.0;
-                v[14] ^= t.1;
-                v[15] ^= t.1;
-
+                // TODO: align self.h
+                let mut xs = ($X4::from_slice_unaligned(&self.h[0..4]), $X4::from_slice_unaligned(&self.h[4..8]), $X4::from_slice_unaligned(&U[0..4]), $X4::from_slice_unaligned(&U[4..8]));
+                xs.3 ^= $X4::new(t.0, t.0, t.1, t.1);
                 for sigma in &SIGMA[..$rounds] {
+                    macro_rules! m0 { ($e:expr) => (m[sigma[$e] as usize] ^ U[sigma[$e + 1] as usize]) }
+                    macro_rules! m1 { ($e:expr) => (m[sigma[$e + 1] as usize] ^ U[sigma[$e] as usize]) }
                     // column step
-                    g(&mut v, &m, sigma, 0, 4, 8, 12, 0);
-                    g(&mut v, &m, sigma, 1, 5, 9, 13, 2);
-                    g(&mut v, &m, sigma, 2, 6, 10, 14, 4);
-                    g(&mut v, &m, sigma, 3, 7, 11, 15, 6);
+                    let m0 = $X4::new(m0!(0), m0!(2), m0!(4), m0!(6));
+                    let m1 = $X4::new(m1!(0), m1!(2), m1!(4), m1!(6));
+                    xs = round(xs, m0, m1);
                     // diagonal step
-                    g(&mut v, &m, sigma, 0, 5, 10, 15, 8);
-                    g(&mut v, &m, sigma, 1, 6, 11, 12, 10);
-                    g(&mut v, &m, sigma, 2, 7, 8, 13, 12);
-                    g(&mut v, &m, sigma, 3, 4, 9, 14, 14);
+                    let m0 = $X4::new(m0!(8), m0!(10), m0!(12), m0!(14));
+                    let m1 = $X4::new(m1!(8), m1!(10), m1!(12), m1!(14));
+                    xs = undiagonalize(round(diagonalize(xs), m0, m1));
                 }
+                xs.0 ^= xs.2 ^ $X4::from_slice_unaligned(&self.h[0..4]);
+                xs.1 ^= xs.3 ^ $X4::from_slice_unaligned(&self.h[4..8]);
+                xs.0.write_to_slice_unaligned(&mut self.h[0..4]);
+                xs.1.write_to_slice_unaligned(&mut self.h[4..8]);
+            }
 
-                for (i, vx) in v.iter().enumerate() {
-                    self.state.h[i % 8] ^= *vx;
+            fn finalize(self) -> GenericArray<u8, <$Bufsz as PartialDiv<U2>>::Output> {
+                let mut out = GenericArray::default();
+                for (h, out) in self
+                    .h
+                    .iter()
+                    .zip(out.chunks_exact_mut(mem::size_of::<$word>()))
+                {
+                    out.copy_from_slice(&h.to_be_bytes());
                 }
+                out
             }
         }
     };
@@ -127,9 +161,7 @@ macro_rules! define_hasher {
         impl Default for $name {
             fn default() -> Self {
                 Self {
-                    compressor: $compressor {
-                        state: State::<$word> { h: $iv },
-                    },
+                    compressor: $compressor { h: $iv },
                     buffer: BlockBuffer::default(),
                     t: (0, 0),
                 }
@@ -198,16 +230,7 @@ macro_rules! define_hasher {
                 buffer.input(&msglen, |block| compressor.put_block(block, t));
                 debug_assert_eq!(buffer.position(), 0);
 
-                let mut out = GenericArray::default();
-                for (h, out) in compressor
-                    .state
-                    .h
-                    .iter()
-                    .zip(out.chunks_exact_mut(mem::size_of::<$word>()))
-                {
-                    $serializer(out, *h);
-                }
-                out
+                GenericArray::clone_from_slice(&compressor.finalize()[..$Bytes::to_usize()])
             }
         }
 
@@ -226,7 +249,7 @@ use consts::{
 use digest::generic_array::typenum::{U128, U28, U32, U48, U64};
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
-define_compressor!(Compressor256, u32, U64, BE::read_u32, BLAKE256_U, 14, 16, 12, 8, 7);
+define_compressor!(Compressor256, u32, U64, BE::read_u32, BLAKE256_U, 14, 16, 12, 8, 7, u32x4);
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
 define_hasher!(Blake224, u32, 64, U64, 224, U28, BE::write_u32, Compressor256, BLAKE224_IV);
@@ -235,7 +258,7 @@ define_hasher!(Blake224, u32, 64, U64, 224, U28, BE::write_u32, Compressor256, B
 define_hasher!(Blake256, u32, 64, U64, 256, U32, BE::write_u32, Compressor256, BLAKE256_IV);
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
-define_compressor!(Compressor512, u64, U128, BE::read_u64, BLAKE512_U, 16, 32, 25, 16, 11);
+define_compressor!(Compressor512, u64, U128, BE::read_u64, BLAKE512_U, 16, 32, 25, 16, 11, u64x4);
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
 define_hasher!(Blake384, u64, 128, U128, 384, U48, BE::write_u64, Compressor512, BLAKE384_IV);

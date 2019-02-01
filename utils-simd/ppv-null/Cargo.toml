@@ -1,0 +1,13 @@
+[package]
+name = "ppv-null"
+version = "0.1.0"
+authors = ["The CryptoCorrosion Contributors"]
+edition = "2018"
+license = "MIT/Apache-2.0"
+description = "Safe, portable, non-SIMD implementation of the crypto-simd API"
+repository = "https://github.com/cryptocorrosion/cryptocorrosion"
+keywords = ["crypto", "simd"]
+categories = ["cryptography", "no-std"]
+
+[dependencies]
+crypto-simd = "0.1"
