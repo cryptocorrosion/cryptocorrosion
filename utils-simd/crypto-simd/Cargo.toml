@@ -10,12 +10,13 @@ keywords = ["crypto", "simd"]
 categories = ["cryptography", "no-std"]
 
 [dependencies]
-packed_simd = { version = "0.3", optional = true }
+packed_simd_crate = { package = "packed_simd", version = "0.3", optional = true }
 
 [features]
 default = ["simd", "std"]
 simd = []
 std = []
+packed_simd = ["packed_simd_crate"]
 
 [badges]
 travis-ci = { repository = "cryptocorrosion/cryptocorrosion" }
