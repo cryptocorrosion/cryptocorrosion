@@ -1,6 +1,6 @@
 [package]
 name = "jh-x86_64"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["The CryptoCorrosion Contributors"]
 license = "MIT/Apache-2.0"
 description = "Portable JH with optimizations for x86-64 cpus"
@@ -16,7 +16,7 @@ crypto-simd = "0.1"
 digest = "0.8"
 hex-literal = "0.1"
 lazy_static = { version = "1.2", optional = true }
-__packed_simd_crate = { package = "packed_simd", version = "0.3.2", optional = true }
+packed_simd_crate = { package = "packed_simd", version = "0.3.2", optional = true }
 ppv-null = "0.1"
 simd = { package = "ppv-lite86", version = "0.1", optional = true }
 
@@ -30,7 +30,7 @@ cc = "1.0.3"
 default = ["std","simd"]
 std = ["lazy_static"]
 avx2 = ["simd"]
-packed_simd = ["__packed_simd_crate", "crypto-simd/packed_simd"]
+packed_simd = ["packed_simd_crate", "crypto-simd/packed_simd"]
 
 [badges]
 travis-ci = { repository = "cryptocorrosion/cryptocorrosion" }

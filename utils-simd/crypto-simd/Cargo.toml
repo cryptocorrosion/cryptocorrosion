@@ -16,3 +16,6 @@ packed_simd = { version = "0.3", optional = true }
 default = ["simd", "std"]
 simd = []
 std = []
+
+[badges]
+travis-ci = { repository = "cryptocorrosion/cryptocorrosion" }

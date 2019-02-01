@@ -352,7 +352,7 @@ mod sse2 {
     }
 }
 //#[cfg(all(feature = "simd", target_feature = "sse2"))]
-pub use sse2::*;
+pub use self::sse2::*;
 
 //#[cfg(not(all(feature = "avx2", target_feature = "avx2")))]
 mod single_channel {
@@ -408,7 +408,7 @@ mod single_channel {
     }
 }
 #[cfg(not(all(feature = "avx2", target_feature = "avx2")))]
-pub use single_channel::u128x2;
+pub use self::single_channel::u128x2;
 
 /*
 #[cfg(all(feature = "avx2", target_feature = "avx2"))]

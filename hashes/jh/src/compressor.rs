@@ -1,12 +1,12 @@
 #![allow(non_upper_case_globals)]
 
-#[cfg(feature = "packed_simd")]
-use __packed_simd_crate::{u128x1, u128x2};
 use core::ptr;
 #[allow(unused)]
 use crypto_simd::*;
 use digest::generic_array::typenum::U64;
 use digest::generic_array::GenericArray;
+#[cfg(feature = "packed_simd")]
+use packed_simd_crate::{u128x1, u128x2};
 #[cfg(not(any(feature = "packed_simd", feature = "simd")))]
 use ppv_null::{u128x1, u128x2};
 #[cfg(all(feature = "simd", not(feature = "packed_simd")))]

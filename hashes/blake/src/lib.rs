@@ -4,8 +4,6 @@
 
 #![no_std]
 
-#[cfg(feature = "packed_simd")]
-extern crate __packed_simd_crate;
 /// ChaCha: 32-bit stream cipher (modified Salsa)
 /// - unusual feature: constant time seek
 /// - different enough from Salsa not to share impl
@@ -23,6 +21,8 @@ extern crate __packed_simd_crate;
 extern crate block_buffer;
 extern crate crypto_simd;
 pub extern crate digest;
+#[cfg(feature = "packed_simd")]
+extern crate packed_simd_crate;
 #[cfg(not(any(feature = "simd", feature = "packed_simd")))]
 extern crate ppv_null;
 #[cfg(all(feature = "simd", not(feature = "packed_simd")))]
@@ -30,21 +30,22 @@ extern crate simd;
 
 mod consts;
 
-#[cfg(feature = "packed_simd")]
-use __packed_simd_crate::{u32x4, u64x4};
+use block_buffer::byteorder::{ByteOrder, BE};
 use block_buffer::BlockBuffer;
 use core::mem;
 use crypto_simd::*;
 use digest::generic_array::typenum::{PartialDiv, Unsigned, U2};
 use digest::generic_array::GenericArray;
 pub use digest::Digest;
+#[cfg(feature = "packed_simd")]
+use packed_simd_crate::{u32x4, u64x4};
 #[cfg(not(any(feature = "simd", feature = "packed_simd")))]
 use ppv_null::{u32x4, u64x4};
 #[cfg(all(feature = "simd", not(feature = "packed_simd")))]
 use simd::{u32x4, u64x4};
 
 macro_rules! define_compressor {
-    ($compressor:ident, $word:ident, $Bufsz:ty, $deserializer:path, $uval:expr,
+    ($compressor:ident, $word:ident, $Bufsz:ty, $deserializer:path, $serializer:path, $uval:expr,
      $rounds:expr, $shift0:expr, $shift1:expr, $shift2: expr, $shift3: expr, $X4:ident) => {
         #[derive(Debug, Clone, Copy)]
         struct $compressor {
@@ -121,7 +122,7 @@ macro_rules! define_compressor {
                     .iter()
                     .zip(out.chunks_exact_mut(mem::size_of::<$word>()))
                 {
-                    out.copy_from_slice(&h.to_be_bytes());
+                    $serializer(out, *h)
                 }
                 out
             }
@@ -242,14 +243,13 @@ macro_rules! define_hasher {
     };
 }
 
-use block_buffer::byteorder::{ByteOrder, BE};
 use consts::{
     BLAKE224_IV, BLAKE256_IV, BLAKE256_U, BLAKE384_IV, BLAKE512_IV, BLAKE512_U, PADDING, SIGMA,
 };
 use digest::generic_array::typenum::{U128, U28, U32, U48, U64};
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
-define_compressor!(Compressor256, u32, U64, BE::read_u32, BLAKE256_U, 14, 16, 12, 8, 7, u32x4);
+define_compressor!(Compressor256, u32, U64, BE::read_u32, BE::write_u32, BLAKE256_U, 14, 16, 12, 8, 7, u32x4);
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
 define_hasher!(Blake224, u32, 64, U64, 224, U28, BE::write_u32, Compressor256, BLAKE224_IV);
@@ -258,7 +258,7 @@ define_hasher!(Blake224, u32, 64, U64, 224, U28, BE::write_u32, Compressor256, B
 define_hasher!(Blake256, u32, 64, U64, 256, U32, BE::write_u32, Compressor256, BLAKE256_IV);
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
-define_compressor!(Compressor512, u64, U128, BE::read_u64, BLAKE512_U, 16, 32, 25, 16, 11, u64x4);
+define_compressor!(Compressor512, u64, U128, BE::read_u64, BE::write_u64, BLAKE512_U, 16, 32, 25, 16, 11, u64x4);
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
 define_hasher!(Blake384, u64, 128, U128, 384, U48, BE::write_u64, Compressor512, BLAKE384_IV);

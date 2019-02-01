@@ -31,7 +31,7 @@ macro_rules! define_vec1 {
             }
             #[inline(always)]
             fn swap(self, m: u128, i: u32) -> Self {
-                Self(((self.0 & m) >> i) | ((self.0) << i) & m)
+                $X1(((self.0 & m) >> i) | ((self.0) << i) & m)
             }
             #[inline(always)]
             pub fn swap1(self) -> Self {
@@ -59,7 +59,7 @@ macro_rules! define_vec1 {
             }
             #[inline(always)]
             pub fn swap64(self) -> Self {
-                Self(self.0 << 64 | self.0 >> 64)
+                $X1(self.0 << 64 | self.0 >> 64)
             }
             #[inline(always)]
             pub fn andnot(self, rhs: Self) -> Self {
@@ -87,21 +87,21 @@ macro_rules! define_vec1 {
             type Output = Self;
             #[inline(always)]
             fn bitxor(self, rhs: Self) -> Self::Output {
-                Self(self.0 ^ rhs.0)
+                $X1(self.0 ^ rhs.0)
             }
         }
         impl BitAnd for $X1 {
             type Output = Self;
             #[inline(always)]
             fn bitand(self, rhs: Self) -> Self::Output {
-                Self(self.0 & rhs.0)
+                $X1(self.0 & rhs.0)
             }
         }
         impl Not for $X1 {
             type Output = Self;
             #[inline(always)]
             fn not(self) -> Self::Output {
-                Self(!self.0)
+                $X1(!self.0)
             }
         }
     };
@@ -171,21 +171,21 @@ macro_rules! define_vec2 {
             type Output = Self;
             #[inline(always)]
             fn bitand(self, rhs: Self) -> Self::Output {
-                Self(self.0 & rhs.0, self.1 & rhs.1)
+                $X2(self.0 & rhs.0, self.1 & rhs.1)
             }
         }
         impl Not for $X2 {
             type Output = Self;
             #[inline(always)]
             fn not(self) -> Self::Output {
-                Self(!self.0, !self.1)
+                $X2(!self.0, !self.1)
             }
         }
         impl BitOr for $X2 {
             type Output = Self;
             #[inline(always)]
             fn bitor(self, rhs: Self) -> Self::Output {
-                Self(self.0 | rhs.0, self.1 | rhs.1)
+                $X2(self.0 | rhs.0, self.1 | rhs.1)
             }
         }
     };
@@ -265,9 +265,9 @@ macro_rules! define_vec4 {
                 debug_assert_eq!(i & !3, 0);
                 match i & 3 {
                     0 => self,
-                    1 => Self(self.3, self.0, self.1, self.2),
-                    2 => Self(self.2, self.3, self.0, self.1),
-                    3 => Self(self.1, self.2, self.3, self.0),
+                    1 => $X4(self.3, self.0, self.1, self.2),
+                    2 => $X4(self.2, self.3, self.0, self.1),
+                    3 => $X4(self.1, self.2, self.3, self.0),
                     _ => unreachable!(),
                 }
             }
@@ -277,7 +277,7 @@ macro_rules! define_vec4 {
             #[inline(always)]
             fn splat_rotate_right(self, i: u32) -> Self::Output {
                 const BITS: u32 = core::mem::size_of::<$word>() as u32 * 8;
-                Self(
+                $X4(
                     (self.0 >> i) | (self.0 << (BITS - i)),
                     (self.1 >> i) | (self.1 << (BITS - i)),
                     (self.2 >> i) | (self.2 << (BITS - i)),

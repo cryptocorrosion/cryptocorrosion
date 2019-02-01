@@ -536,7 +536,7 @@ pub mod ssse3 {
     pub use super::aes::{init1024, init512};
 }
 #[cfg(target_feature = "aes")]
-pub use aes as ssse3;
+pub use self::aes as ssse3;
 
 #[cfg(not(target_feature = "ssse3"))]
 #[cfg(any(feature = "std", target_feature = "sse2"))]
@@ -568,10 +568,10 @@ pub mod sse2 {
     }
 }
 #[cfg(target_feature = "ssse3")]
-pub use ssse3 as sse2;
+pub use self::ssse3 as sse2;
 
 #[cfg(all(not(feature = "std"), target_feature = "sse2"))]
-pub use sse2::*;
+pub use self::sse2::*;
 
 #[cfg(feature = "std")]
 mod autodetect {
@@ -629,7 +629,7 @@ mod autodetect {
     }
 }
 #[cfg(feature = "std")]
-pub use autodetect::*;
+pub use self::autodetect::*;
 
 #[cfg(test)]
 mod test {
