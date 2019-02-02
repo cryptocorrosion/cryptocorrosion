@@ -9,6 +9,9 @@ extern crate crypto_simd;
 #[cfg(test)]
 #[macro_use]
 extern crate hex_literal;
+#[cfg(feature = "std")]
+#[macro_use]
+extern crate lazy_static;
 extern crate stream_cipher;
 
 #[cfg(feature = "packed_simd")]
@@ -94,13 +97,13 @@ const BUFSZ8: u8 = BUFSZ64 as u8;
 const BUFSZ: usize = BUFSZ64 as usize;
 
 impl ChaCha {
-    // Set 32-bit block count, affecting next refill.
+    /// Set 32-bit block count, affecting next refill.
     #[inline(always)]
     fn seek32(&mut self, blockct: u32) {
         self.d = self.d.replace(0, blockct)
     }
 
-    // Set 64-bit block count, affecting next refill.
+    /// Set 64-bit block count, affecting next refill.
     #[inline(always)]
     fn seek64(&mut self, blockct: u64) {
         self.d = self
@@ -109,10 +112,8 @@ impl ChaCha {
             .replace(1, (blockct >> 32) as u32);
     }
 
-    // Fill a new buffer from the state, autoincrementing internal block count. Caller must count
-    // blocks to ensure this doesn't wrap a 32/64 bit counter, as appropriate.
     #[inline(always)]
-    fn refill(&mut self, drounds: u32, words: &mut [u32; 32]) {
+    fn refill_impl(&mut self, drounds: u32, words: &mut [u32; 32]) {
         let k = u32x4::new(0x61707865, 0x3320646e, 0x79622d32, 0x6b206574);
         // can ignore high word: value to increment is initially even
         let d1 = self.d + u32x4::new(1, 0, 0, 0);
@@ -149,6 +150,53 @@ impl ChaCha {
         self.d = d1
             .replace(0, blockct as u32)
             .replace(1, (blockct >> 32) as u32);
+    }
+
+    /// Fill a new buffer from the state, autoincrementing internal block count. Caller must count
+    /// blocks to ensure this doesn't wrap a 32/64 bit counter, as appropriate.
+    #[cfg(not(all(
+        feature = "std",
+        any(feature = "simd", feature = "packed_simd")
+    )))]
+    fn refill(&mut self, drounds: u32, words: &mut [u32; 32]) {
+        refill_impl(state, drounds, words);
+    }
+
+    /// Fill a new buffer from the state, autoincrementing internal block count. Caller must count
+    /// blocks to ensure this doesn't wrap a 32/64 bit counter, as appropriate.
+    #[cfg(all(
+        feature = "std",
+        any(feature = "simd", feature = "packed_simd")
+    ))]
+    fn refill(&mut self, drounds: u32, words: &mut [u32; 32]) {
+        type Refill = unsafe fn(state: &mut ChaCha, drounds: u32, words: &mut [u32; 32]);
+        lazy_static! {
+            static ref IMPL: Refill = { dispatch_init() };
+        }
+        fn dispatch_init() -> Refill {
+            if is_x86_feature_detected!("avx2") {
+                // wide issue
+                #[target_feature(enable = "avx2")]
+                unsafe fn refill_avx2(state: &mut ChaCha, drounds: u32, words: &mut [u32; 32]) {
+                    ChaCha::refill_impl(state, drounds, words);
+                }
+                refill_avx2
+            } else if is_x86_feature_detected!("ssse3") {
+                // faster rotates
+                #[target_feature(enable = "ssse3")]
+                unsafe fn refill_ssse3(state: &mut ChaCha, drounds: u32, words: &mut [u32; 32]) {
+                    ChaCha::refill_impl(state, drounds, words);
+                }
+                refill_ssse3
+            } else {
+                // fallback
+                unsafe fn refill_fallback(state: &mut ChaCha, drounds: u32, words: &mut [u32; 32]) {
+                    ChaCha::refill_impl(state, drounds, words);
+                }
+                refill_fallback
+            }
+        }
+        unsafe { IMPL(self, drounds, words) }
     }
 }
 
