@@ -320,74 +320,76 @@ define_vec2!(u128x2, u128);
 // TODO: macroize this for other types
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone)]
-pub struct u32x4x2(u32x4, u32x4);
-impl u32x4x2 {
+pub struct u32x4x4(u32x4, u32x4, u32x4, u32x4);
+impl u32x4x4 {
     #[inline(always)]
-    pub fn from_halves(a: u32x4, b: u32x4) -> Self {
-        u32x4x2(a, b)
+    fn zipmap<F>(self, rhs: Self, mut f: F) -> Self
+    where
+        F: FnMut(u32x4, u32x4) -> u32x4,
+    {
+        u32x4x4(
+            f(self.0, rhs.0),
+            f(self.1, rhs.1),
+            f(self.2, rhs.2),
+            f(self.3, rhs.3),
+        )
     }
     #[inline(always)]
-    pub fn from_half(a: u32x4) -> Self {
-        u32x4x2(a, u32x4::splat(0))
+    pub fn from((a, b, c, d): (u32x4, u32x4, u32x4, u32x4)) -> Self {
+        u32x4x4(a, b, c, d)
     }
     #[inline(always)]
-    pub fn into_halves(self) -> (u32x4, u32x4) {
-        (self.0, self.1)
+    pub fn splat(a: u32x4) -> Self {
+        u32x4x4(a, a, a, a)
     }
-}
-impl BitXor for u32x4x2 {
-    type Output = u32x4x2;
     #[inline(always)]
-    fn bitxor(self, rhs: Self) -> Self::Output {
-        u32x4x2(self.0 ^ rhs.0, self.1 ^ rhs.1)
-    }
-}
-impl BitOr for u32x4x2 {
-    type Output = Self;
-    #[inline(always)]
-    fn bitor(self, rhs: Self) -> Self::Output {
-        u32x4x2(self.0 | rhs.0, self.1 | rhs.1)
+    pub fn into_parts(self) -> (u32x4, u32x4, u32x4, u32x4) {
+        (self.0, self.1, self.2, self.3)
     }
 }
-impl BitAnd for u32x4x2 {
-    type Output = Self;
-    #[inline(always)]
-    fn bitand(self, rhs: Self) -> Self::Output {
-        u32x4x2(self.0 & rhs.0, self.1 & rhs.1)
-    }
-}
-impl BitXorAssign for u32x4x2 {
+zipmap_impl!(u32x4x4, u32x4, BitXor, bitxor);
+zipmap_impl!(u32x4x4, u32x4, BitOr, bitor);
+zipmap_impl!(u32x4x4, u32x4, BitAnd, bitand);
+zipmap_impl!(u32x4x4, u32x4, Add, add);
+impl BitXorAssign for u32x4x4 {
     #[inline(always)]
     fn bitxor_assign(&mut self, rhs: Self) {
         self.0 = self.0 ^ rhs.0;
         self.1 = self.1 ^ rhs.1;
+        self.2 = self.2 ^ rhs.2;
+        self.3 = self.3 ^ rhs.3;
     }
 }
-impl Add for u32x4x2 {
-    type Output = Self;
-    #[inline(always)]
-    fn add(self, rhs: Self) -> Self::Output {
-        u32x4x2(self.0 + rhs.0, self.1 + rhs.1)
-    }
-}
-impl AddAssign for u32x4x2 {
+impl AddAssign for u32x4x4 {
     #[inline(always)]
     fn add_assign(&mut self, rhs: Self) {
         self.0 = self.0 + rhs.0;
         self.1 = self.1 + rhs.1;
+        self.2 = self.2 + rhs.2;
+        self.3 = self.3 + rhs.3;
     }
 }
-impl RotateWordsRight for u32x4x2 {
+impl RotateWordsRight for u32x4x4 {
     type Output = Self;
     #[inline(always)]
     fn rotate_words_right(self, i: u32) -> Self::Output {
-        u32x4x2(self.0.rotate_words_right(i), self.1.rotate_words_right(i))
+        u32x4x4(
+            self.0.rotate_words_right(i),
+            self.1.rotate_words_right(i),
+            self.2.rotate_words_right(i),
+            self.3.rotate_words_right(i),
+        )
     }
 }
-impl SplatRotateRight for u32x4x2 {
+impl SplatRotateRight for u32x4x4 {
     type Output = Self;
     #[inline(always)]
     fn splat_rotate_right(self, i: u32) -> Self::Output {
-        u32x4x2(self.0.splat_rotate_right(i), self.1.splat_rotate_right(i))
+        u32x4x4(
+            self.0.splat_rotate_right(i),
+            self.1.splat_rotate_right(i),
+            self.2.splat_rotate_right(i),
+            self.3.splat_rotate_right(i),
+        )
     }
 }

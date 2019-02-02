@@ -33,7 +33,7 @@ extern crate packed_simd_crate;
 pub mod packed_simd {
     use super::*;
     use core::ops::{Add, AddAssign, BitAnd, BitOr, BitXor, BitXorAssign};
-    use packed_simd_crate::{u128x1, u128x2, u32x4, u32x8, u64x4};
+    use packed_simd_crate::{u128x1, u128x2, u32x16, u32x4, u64x4};
     impl AndNot for u128x2 {
         type Output = u128x2;
         #[inline(always)]
@@ -104,11 +104,11 @@ pub mod packed_simd {
 
     #[allow(non_camel_case_types)]
     #[derive(Copy, Clone)]
-    pub struct u32x4x2(u32x8);
-    impl u32x4x2 {
+    pub struct u32x4x4(u32x16);
+    impl u32x4x4 {
         #[inline(always)]
-        pub fn from_halves(a: u32x4, b: u32x4) -> Self {
-            u32x4x2(u32x8::new(
+        pub fn from((a, b, c, d): (u32x4, u32x4, u32x4, u32x4)) -> Self {
+            u32x4x4(u32x16::new(
                 a.extract(0),
                 a.extract(1),
                 a.extract(2),
@@ -117,14 +117,22 @@ pub mod packed_simd {
                 b.extract(1),
                 b.extract(2),
                 b.extract(3),
+                c.extract(0),
+                c.extract(1),
+                c.extract(2),
+                c.extract(3),
+                d.extract(0),
+                d.extract(1),
+                d.extract(2),
+                d.extract(3),
             ))
         }
         #[inline(always)]
-        pub fn from_half(a: u32x4) -> Self {
-            u32x4x2::from_halves(a, u32x4::splat(0))
+        pub fn splat(a: u32x4) -> Self {
+            u32x4x4::from((a, a, a, a))
         }
         #[inline(always)]
-        pub fn into_halves(self) -> (u32x4, u32x4) {
+        pub fn into_parts(self) -> (u32x4, u32x4, u32x4, u32x4) {
             let a = u32x4::new(
                 self.0.extract(0),
                 self.0.extract(1),
@@ -137,67 +145,88 @@ pub mod packed_simd {
                 self.0.extract(6),
                 self.0.extract(7),
             );
-            (a, b)
+            let c = u32x4::new(
+                self.0.extract(8),
+                self.0.extract(9),
+                self.0.extract(10),
+                self.0.extract(11),
+            );
+            let d = u32x4::new(
+                self.0.extract(12),
+                self.0.extract(13),
+                self.0.extract(14),
+                self.0.extract(15),
+            );
+            (a, b, c, d)
         }
     }
-    impl BitXor for u32x4x2 {
-        type Output = u32x4x2;
+    impl BitXor for u32x4x4 {
+        type Output = u32x4x4;
         #[inline(always)]
         fn bitxor(self, rhs: Self) -> Self::Output {
-            u32x4x2(self.0 ^ rhs.0)
+            u32x4x4(self.0 ^ rhs.0)
         }
     }
-    impl BitOr for u32x4x2 {
+    impl BitOr for u32x4x4 {
         type Output = Self;
         #[inline(always)]
         fn bitor(self, rhs: Self) -> Self::Output {
-            u32x4x2(self.0 | rhs.0)
+            u32x4x4(self.0 | rhs.0)
         }
     }
-    impl BitAnd for u32x4x2 {
+    impl BitAnd for u32x4x4 {
         type Output = Self;
         #[inline(always)]
         fn bitand(self, rhs: Self) -> Self::Output {
-            u32x4x2(self.0 & rhs.0)
+            u32x4x4(self.0 & rhs.0)
         }
     }
-    impl BitXorAssign for u32x4x2 {
+    impl BitXorAssign for u32x4x4 {
         #[inline(always)]
         fn bitxor_assign(&mut self, rhs: Self) {
             self.0 ^= rhs.0;
         }
     }
-    impl Add for u32x4x2 {
+    impl Add for u32x4x4 {
         type Output = Self;
         #[inline(always)]
         fn add(self, rhs: Self) -> Self::Output {
-            u32x4x2(self.0 + rhs.0)
+            u32x4x4(self.0 + rhs.0)
         }
     }
-    impl AddAssign for u32x4x2 {
+    impl AddAssign for u32x4x4 {
         #[inline(always)]
         fn add_assign(&mut self, rhs: Self) {
             self.0 += rhs.0;
         }
     }
-    impl RotateWordsRight for u32x4x2 {
+    impl RotateWordsRight for u32x4x4 {
         type Output = Self;
         #[inline(always)]
         fn rotate_words_right(self, i: u32) -> Self::Output {
             match i {
                 0 => self,
-                1 => u32x4x2(shuffle!(self.0, [3, 0, 1, 2, 7, 4, 5, 6])),
-                2 => u32x4x2(shuffle!(self.0, [2, 3, 0, 1, 6, 7, 4, 5])),
-                3 => u32x4x2(shuffle!(self.0, [1, 2, 3, 0, 5, 6, 7, 4])),
+                1 => u32x4x4(shuffle!(
+                    self.0,
+                    [3, 0, 1, 2, 7, 4, 5, 6, 11, 8, 9, 10, 15, 12, 13, 14]
+                )),
+                2 => u32x4x4(shuffle!(
+                    self.0,
+                    [2, 3, 0, 1, 6, 7, 4, 5, 10, 11, 8, 9, 14, 15, 12, 13]
+                )),
+                3 => u32x4x4(shuffle!(
+                    self.0,
+                    [1, 2, 3, 0, 5, 6, 7, 4, 9, 10, 11, 8, 13, 14, 15, 12]
+                )),
                 _ => panic!("rotate_words_right index must be in the range 0..4"),
             }
         }
     }
-    impl SplatRotateRight for u32x4x2 {
+    impl SplatRotateRight for u32x4x4 {
         type Output = Self;
         #[inline(always)]
         fn splat_rotate_right(self, i: u32) -> Self::Output {
-            u32x4x2(self.0.rotate_right(u32x8::splat(i)))
+            u32x4x4(self.0.rotate_right(u32x16::splat(i)))
         }
     }
 }

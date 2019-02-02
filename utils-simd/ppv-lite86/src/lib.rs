@@ -262,75 +262,109 @@ mod sse2 {
     // TODO: avx2 version
     #[allow(non_camel_case_types)]
     #[derive(Copy, Clone)]
-    pub struct u32x4x2(u32x4, u32x4);
-    impl u32x4x2 {
+    pub struct u32x4x4(u32x4, u32x4, u32x4, u32x4);
+    impl u32x4x4 {
         #[inline(always)]
-        pub fn from_halves(a: u32x4, b: u32x4) -> Self {
-            u32x4x2(a, b)
+        pub fn from((a, b, c, d): (u32x4, u32x4, u32x4, u32x4)) -> Self {
+            u32x4x4(a, b, c, d)
         }
         #[inline(always)]
-        pub fn from_half(a: u32x4) -> Self {
-            u32x4x2(a, u32x4::splat(0))
+        pub fn splat(a: u32x4) -> Self {
+            u32x4x4(a, a, a, a)
         }
         #[inline(always)]
-        pub fn into_halves(self) -> (u32x4, u32x4) {
-            (self.0, self.1)
+        pub fn into_parts(self) -> (u32x4, u32x4, u32x4, u32x4) {
+            (self.0, self.1, self.2, self.3)
         }
     }
-    impl BitXor for u32x4x2 {
-        type Output = u32x4x2;
+    impl BitXor for u32x4x4 {
+        type Output = u32x4x4;
         #[inline(always)]
         fn bitxor(self, rhs: Self) -> Self::Output {
-            u32x4x2(self.0 ^ rhs.0, self.1 ^ rhs.1)
+            u32x4x4(
+                self.0 ^ rhs.0,
+                self.1 ^ rhs.1,
+                self.2 ^ rhs.2,
+                self.3 ^ rhs.3,
+            )
         }
     }
-    impl BitOr for u32x4x2 {
+    impl BitOr for u32x4x4 {
         type Output = Self;
         #[inline(always)]
         fn bitor(self, rhs: Self) -> Self::Output {
-            u32x4x2(self.0 | rhs.0, self.1 | rhs.1)
+            u32x4x4(
+                self.0 | rhs.0,
+                self.1 | rhs.1,
+                self.2 | rhs.2,
+                self.3 | rhs.3,
+            )
         }
     }
-    impl BitAnd for u32x4x2 {
+    impl BitAnd for u32x4x4 {
         type Output = Self;
         #[inline(always)]
         fn bitand(self, rhs: Self) -> Self::Output {
-            u32x4x2(self.0 & rhs.0, self.1 & rhs.1)
+            u32x4x4(
+                self.0 & rhs.0,
+                self.1 & rhs.1,
+                self.2 & rhs.2,
+                self.3 & rhs.3,
+            )
         }
     }
-    impl BitXorAssign for u32x4x2 {
+    impl BitXorAssign for u32x4x4 {
         #[inline(always)]
         fn bitxor_assign(&mut self, rhs: Self) {
             self.0 = self.0 ^ rhs.0;
             self.1 = self.1 ^ rhs.1;
+            self.2 = self.2 ^ rhs.2;
+            self.3 = self.3 ^ rhs.3;
         }
     }
-    impl Add for u32x4x2 {
+    impl Add for u32x4x4 {
         type Output = Self;
         #[inline(always)]
         fn add(self, rhs: Self) -> Self::Output {
-            u32x4x2(self.0 + rhs.0, self.1 + rhs.1)
+            u32x4x4(
+                self.0 + rhs.0,
+                self.1 + rhs.1,
+                self.0 + rhs.0,
+                self.1 + rhs.1,
+            )
         }
     }
-    impl AddAssign for u32x4x2 {
+    impl AddAssign for u32x4x4 {
         #[inline(always)]
         fn add_assign(&mut self, rhs: Self) {
             self.0 = self.0 + rhs.0;
             self.1 = self.1 + rhs.1;
+            self.2 = self.2 + rhs.2;
+            self.3 = self.3 + rhs.3;
         }
     }
-    impl RotateWordsRight for u32x4x2 {
+    impl RotateWordsRight for u32x4x4 {
         type Output = Self;
         #[inline(always)]
         fn rotate_words_right(self, i: u32) -> Self::Output {
-            u32x4x2(self.0.rotate_words_right(i), self.1.rotate_words_right(i))
+            u32x4x4(
+                self.0.rotate_words_right(i),
+                self.1.rotate_words_right(i),
+                self.2.rotate_words_right(i),
+                self.3.rotate_words_right(i),
+            )
         }
     }
-    impl SplatRotateRight for u32x4x2 {
+    impl SplatRotateRight for u32x4x4 {
         type Output = Self;
         #[inline(always)]
         fn splat_rotate_right(self, i: u32) -> Self::Output {
-            u32x4x2(self.0.splat_rotate_right(i), self.1.splat_rotate_right(i))
+            u32x4x4(
+                self.0.splat_rotate_right(i),
+                self.1.splat_rotate_right(i),
+                self.2.splat_rotate_right(i),
+                self.3.splat_rotate_right(i),
+            )
         }
     }
 
