@@ -27,6 +27,10 @@ Minimum Rust version: 1.31.
 
 ### Stream ciphers
 
+| Algo       | Crate name |
+| ---------- | ---------- |
+| ChaCha     | c2-chacha  |
+
 ## SIMD
 
 Many of the crates in this project include optimized SIMD implementations,
