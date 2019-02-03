@@ -386,8 +386,26 @@ mod chacha_any {
 }
 use self::chacha_any::*;
 
+trait AsBool {
+    const BOOL: bool;
+}
+struct WideEnabled;
+impl AsBool for WideEnabled {
+    const BOOL: bool = true;
+}
+#[cfg(test)]
+struct WideDisabled;
+#[cfg(test)]
+impl AsBool for WideDisabled {
+    const BOOL: bool = false;
+}
+
 impl Buffer {
-    fn try_apply_keystream(&mut self, mut data: &mut [u8], drounds: u32) -> Result<(), LoopError> {
+    fn try_apply_keystream<EnableWide: AsBool>(
+        &mut self,
+        mut data: &mut [u8],
+        drounds: u32,
+    ) -> Result<(), LoopError> {
         // Lazy fill: after a seek() we may be partway into a block we don't have yet.
         // We can do this before the overflow check because this is not an effect of the current
         // operation.
@@ -421,15 +439,17 @@ impl Buffer {
         data = d1;
         have -= have_ready;
         // Process wide chunks.
-        let (d0, d1) = data.split_at_mut(data.len() & !(BUFSZ - 1));
-        for dd in d0.chunks_exact_mut(BUFSZ) {
-            let mut buf = WordBytes::default();
-            self.state.refill_wide(drounds, unsafe { &mut buf.words });
-            for (data_b, key_b) in dd.iter_mut().zip(unsafe { buf.bytes.iter() }) {
-                *data_b ^= *key_b;
+        if EnableWide::BOOL {
+            let (d0, d1) = data.split_at_mut(data.len() & !(BUFSZ - 1));
+            for dd in d0.chunks_exact_mut(BUFSZ) {
+                let mut buf = WordBytes::default();
+                self.state.refill_wide(drounds, unsafe { &mut buf.words });
+                for (data_b, key_b) in dd.iter_mut().zip(unsafe { buf.bytes.iter() }) {
+                    *data_b ^= *key_b;
+                }
             }
+            data = d1;
         }
-        let data = d1;
         // Handle the tail a block at a time so we'll have storage for any leftovers.
         for dd in data.chunks_mut(BLOCK) {
             self.state
@@ -441,6 +461,14 @@ impl Buffer {
         }
         self.have = have as i8;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+impl<NonceSize, Rounds: Unsigned, IsX> ChaChaAny<NonceSize, Rounds, IsX> {
+    pub fn try_apply_keystream_narrow(&mut self, data: &mut [u8]) -> Result<(), LoopError> {
+        self.state
+            .try_apply_keystream::<WideDisabled>(data, Rounds::U32)
     }
 }
 
@@ -597,7 +625,8 @@ impl<NonceSize: Unsigned, Rounds, IsX> SyncStreamCipherSeek for ChaChaAny<NonceS
 impl<NonceSize, Rounds: Unsigned, IsX> SyncStreamCipher for ChaChaAny<NonceSize, Rounds, IsX> {
     #[inline]
     fn try_apply_keystream(&mut self, data: &mut [u8]) -> Result<(), LoopError> {
-        self.state.try_apply_keystream(data, Rounds::U32)
+        self.state
+            .try_apply_keystream::<WideEnabled>(data, Rounds::U32)
     }
 }
 
@@ -819,5 +848,45 @@ mod tests {
         st.apply_keystream(&mut chunks[10..128]);
 
         assert_eq!(&continuous[..], &chunks[..]);
+    }
+
+    #[test]
+    fn wide_matches_narrow() {
+        let key = hex!("fa44478c59ca70538e3549096ce8b523232c50d9e8e8d10c203ef6c8d07098a5");
+        let nonce = hex!("8d3a0d6d7827c007");
+        let mut buf = [0; 2048];
+        let mut state = ChaCha20::new(
+            GenericArray::from_slice(&key),
+            GenericArray::from_slice(&nonce),
+        );
+
+        let lens = [
+            2048, 2047, 1537, 1536, 1535, 1025, 1024, 1023, 768, 513, 512, 511, 200, 100, 50,
+        ];
+
+        for &len in &lens {
+            let buf = &mut buf[0..len];
+
+            // encrypt with hybrid wide/narrow
+            state.seek(0);
+            state.apply_keystream(buf);
+            state.seek(0);
+            // decrypt with narrow only
+            state.try_apply_keystream_narrow(buf).unwrap();
+            for &byte in buf.iter() {
+                assert_eq!(byte, 0);
+            }
+
+            // encrypt with hybrid wide/narrow
+            let offset = 0x3fffffff70u64;
+            state.seek(offset);
+            state.apply_keystream(buf);
+            // decrypt with narrow only
+            state.seek(offset);
+            state.try_apply_keystream_narrow(buf).unwrap();
+            for &byte in buf.iter() {
+                assert_eq!(byte, 0);
+            }
+        }
     }
 }
