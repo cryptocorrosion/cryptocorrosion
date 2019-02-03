@@ -4,20 +4,6 @@
 
 #![no_std]
 
-/// ChaCha: 32-bit stream cipher (modified Salsa)
-/// - unusual feature: constant time seek
-/// - different enough from Salsa not to share impl
-///
-/// BLAKE: built on ChaCha
-/// - add (tweaked) message words each round
-/// - reverse rotations
-/// - extension to 64-bit is trivial (change word size, rotation amounts, nr rounds)
-///
-/// BLAKE2: modified BLAKE
-/// - don't tweak message words each round
-/// - change rotation constants
-/// - simpler padding; XOR param block into IVs
-/// - reduced rounds
 extern crate block_buffer;
 extern crate crypto_simd;
 pub extern crate digest;

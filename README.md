@@ -12,24 +12,27 @@ Minimum Rust version: 1.31.
 
 ### Cryptographic hashes
 
-| Algo   | Crate name    |
-| ------ | ------------- |
-| Blake  | blake-hash    |
-| Grøstl | groestl-aesni |
-| JH     | jh-x86\_64    |
-| Skein  | skein-hash    |
+| Algo   | Crate name    | SIMD               |
+| ------ | ------------- | ------------------ |
+| Blake  | blake-hash    | [1]                |
+| Grøstl | groestl-aesni | :heavy_check_mark: |
+| JH     | jh-x86\_64    | :heavy_check_mark: |
+| Skein  | skein-hash    | :x:                |
+
+[1] SIMD is available for builds with target-cpu/target-feature configured, but
+runtime CPU detection is not yet supported.
 
 ### Block ciphers
 
-| Algo       | Crate name       |
-| ---------- | ---------------- |
-| Threefish  | threefish-cipher |
+| Algo       | Crate name       | SIMD               |
+| ---------- | ---------------- | ------------------ |
+| Threefish  | threefish-cipher | :x:                |
 
 ### Stream ciphers
 
-| Algo       | Crate name |
-| ---------- | ---------- |
-| ChaCha     | c2-chacha  |
+| Algo       | Crate name | SIMD               |
+| ---------- | ---------- | ------------------ |
+| ChaCha     | c2-chacha  | :heavy_check_mark: |
 
 ## SIMD
 
@@ -47,7 +50,7 @@ to switch to a generic implementation.
 
 | feature        | crate        | no `unsafe`        | rust version   | build time? | performance   |
 | -------------- | ------------ | ------------------ | -------------- | ----------- | ------------- |
-| simd (default) | ppv\_lite86  | :x:                | 1.27           | fast        | fastest (x86) |
+| simd (default) | ppv\_lite86  | :x:                | 1.27           | fast        | fast          |
 | (no simd)      | ppv\_null    | :heavy_check_mark: |                | fast        | slow          |
 | packed\_simd   | packed\_simd |                    | recent nightly | slow        | fast          |
 
