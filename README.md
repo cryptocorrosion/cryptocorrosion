@@ -41,11 +41,11 @@ enable it as "packed\_simd".
 If you'd prefer to minimize usage of `unsafe` code: disable the "simd" feature
 to switch to a generic implementation.
 
-| feature        | crate        | no `unsafe`        | rust version   | build time? | performance |
-| -------------- | ------------ | ------------------ | -------------- | ----------- | ----------- |
-| simd (default) | ppv\_lite86  | :x:                | 1.27           | fast        | fast on x86 |
-| (no simd)      | ppv\_null    | :heavy_check_mark: |                | fast        | slow        |
-| packed\_simd   | packed\_simd |                    | recent nightly | slow        | fast        |
+| feature        | crate        | no `unsafe`        | rust version   | build time? | performance   |
+| -------------- | ------------ | ------------------ | -------------- | ----------- | ------------- |
+| simd (default) | ppv\_lite86  | :x:                | 1.27           | fast        | fastest (x86) |
+| (no simd)      | ppv\_null    | :heavy_check_mark: |                | fast        | slow          |
+| packed\_simd   | packed\_simd |                    | recent nightly | slow        | fast          |
 
 ## License
 

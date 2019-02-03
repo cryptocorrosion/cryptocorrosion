@@ -31,67 +31,99 @@ use simd::{u32x4, u32x4x4};
 
 use byteorder::{ByteOrder, LE};
 use core::{cmp, u32, u64};
-use crypto_simd::*;
 use stream_cipher::generic_array::typenum::{Unsigned, U10, U12, U24, U32, U4, U6, U8};
 use stream_cipher::generic_array::{ArrayLength, GenericArray};
 use stream_cipher::{LoopError, NewStreamCipher, SyncStreamCipher, SyncStreamCipherSeek};
 
-const BLOCK: u64 = 64;
+const BLOCK: usize = 64;
+const BLOCK64: u64 = BLOCK as u64;
+const BLOCKWORDS: usize = BLOCK / 4;
 const LOG2_BUFBLOCKS: u64 = 2;
 const BUFBLOCKS: u64 = 1 << LOG2_BUFBLOCKS;
-const BUFSZ64: u64 = BLOCK * BUFBLOCKS;
-const BUFSZ8: u32 = BUFSZ64 as u32;
+const BUFSZ64: u64 = BLOCK64 * BUFBLOCKS;
 const BUFSZ: usize = BUFSZ64 as usize;
-const BUFWORDS: usize = (BLOCK * BUFBLOCKS / 4) as usize;
+const BUFWORDS: usize = (BLOCK64 * BUFBLOCKS / 4) as usize;
 
-const BIG_LEN: u64 = 1 << (64 - LOG2_BUFBLOCKS);
-const SMALL_LEN: u64 = 1 << (32 - LOG2_BUFBLOCKS);
+const BIG_LEN: u64 = 0;
+const SMALL_LEN: u64 = 1 << 32;
+
+#[derive(Clone, Copy)]
+union Block {
+    words: [u32; BLOCKWORDS],
+    bytes: [u8; BLOCK],
+}
+impl Default for Block {
+    fn default() -> Self {
+        Block {
+            words: [0; BLOCKWORDS],
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 union WordBytes {
     words: [u32; BUFWORDS],
     bytes: [u8; BUFSZ],
 }
-
-#[derive(Clone)]
-struct X4 {
-    a: u32x4x4,
-    b: u32x4x4,
-    c: u32x4x4,
-    d: u32x4x4,
+impl Default for WordBytes {
+    fn default() -> Self {
+        WordBytes {
+            words: [0; BUFWORDS],
+        }
+    }
 }
 
-#[inline(always)]
-fn round(mut x: X4) -> X4 {
-    x.a += x.b;
-    x.d ^= x.a;
-    x.d = x.d.splat_rotate_right(16);
-    x.c += x.d;
-    x.b ^= x.c;
-    x.b = x.b.splat_rotate_right(20);
-    x.a += x.b;
-    x.d ^= x.a;
-    x.d = x.d.splat_rotate_right(24);
-    x.c += x.d;
-    x.b ^= x.c;
-    x.b = x.b.splat_rotate_right(25);
-    x
+macro_rules! impl_round {
+    ($state:ident, $vec:ident) => {
+        #[derive(Clone)]
+        pub struct $state {
+            pub a: $vec,
+            pub b: $vec,
+            pub c: $vec,
+            pub d: $vec,
+        }
+        #[inline(always)]
+        pub fn round(mut x: $state) -> $state {
+            x.a += x.b;
+            x.d ^= x.a;
+            x.d = x.d.splat_rotate_right(16);
+            x.c += x.d;
+            x.b ^= x.c;
+            x.b = x.b.splat_rotate_right(20);
+            x.a += x.b;
+            x.d ^= x.a;
+            x.d = x.d.splat_rotate_right(24);
+            x.c += x.d;
+            x.b ^= x.c;
+            x.b = x.b.splat_rotate_right(25);
+            x
+        }
+        #[inline(always)]
+        pub fn diagonalize(mut x: $state) -> $state {
+            x.b = x.b.rotate_words_right(3);
+            x.c = x.c.rotate_words_right(2);
+            x.d = x.d.rotate_words_right(1);
+            x
+        }
+        #[inline(always)]
+        pub fn undiagonalize(mut x: $state) -> $state {
+            x.b = x.b.rotate_words_right(1);
+            x.c = x.c.rotate_words_right(2);
+            x.d = x.d.rotate_words_right(3);
+            x
+        }
+    };
 }
 
-#[inline(always)]
-fn diagonalize(mut x: X4) -> X4 {
-    x.b = x.b.rotate_words_right(3);
-    x.c = x.c.rotate_words_right(2);
-    x.d = x.d.rotate_words_right(1);
-    x
+mod wide {
+    use super::*;
+    use crypto_simd::*;
+    impl_round!(X4, u32x4x4);
 }
-
-#[inline(always)]
-fn undiagonalize(mut x: X4) -> X4 {
-    x.b = x.b.rotate_words_right(1);
-    x.c = x.c.rotate_words_right(2);
-    x.d = x.d.rotate_words_right(3);
-    x
+mod narrow {
+    use super::*;
+    use crypto_simd::*;
+    impl_round!(X4, u32x4);
 }
 
 #[derive(Clone)]
@@ -100,6 +132,90 @@ struct ChaCha {
     c: u32x4,
     d: u32x4,
 }
+
+macro_rules! impl_dispatch {
+        ($fn:ident, $fn_impl:ident, $width:expr) => {
+    /// Fill a new buffer from the state, autoincrementing internal block count. Caller must count
+    /// blocks to ensure this doesn't wrap a 32/64 bit counter, as appropriate.
+    #[cfg(not(all(
+        feature = "std",
+        target_arch = "x86_64",
+        any(feature = "simd", feature = "packed_simd")
+    )))]
+    fn $fn(&mut self, drounds: u32, words: &mut [u32; $width]) {
+        self.$fn_impl(drounds, words);
+    }
+
+    /// Fill a new buffer from the state, autoincrementing internal block count. Caller must count
+    /// blocks to ensure this doesn't wrap a 32/64 bit counter, as appropriate.
+    #[cfg(all(
+        feature = "std",
+        target_arch = "x86_64",
+        any(feature = "simd", feature = "packed_simd")
+    ))]
+    fn $fn(&mut self, drounds: u32, words: &mut [u32; $width]) {
+        type Refill = unsafe fn(state: &mut ChaCha, drounds: u32, words: &mut [u32; $width]);
+        lazy_static! {
+            static ref IMPL: Refill = { dispatch_init() };
+        }
+        fn dispatch_init() -> Refill {
+            if is_x86_feature_detected!("avx2") {
+                // wide issue
+                #[target_feature(enable = "avx2")]
+                unsafe fn refill_avx2(
+                    state: &mut ChaCha,
+                    drounds: u32,
+                    words: &mut [u32; $width],
+                ) {
+                    ChaCha::$fn_impl(state, drounds, words);
+                }
+                refill_avx2
+            } else if is_x86_feature_detected!("avx") {
+                #[target_feature(enable = "avx")]
+                unsafe fn refill_avx(
+                    state: &mut ChaCha,
+                    drounds: u32,
+                    words: &mut [u32; $width],
+                ) {
+                    ChaCha::$fn_impl(state, drounds, words);
+                }
+                refill_avx
+            } else if is_x86_feature_detected!("sse4.1") {
+                #[target_feature(enable = "sse4.1")]
+                unsafe fn refill_sse4(
+                    state: &mut ChaCha,
+                    drounds: u32,
+                    words: &mut [u32; $width],
+                ) {
+                    ChaCha::$fn_impl(state, drounds, words);
+                }
+                refill_sse4
+            } else if is_x86_feature_detected!("ssse3") {
+                // faster rotates
+                #[target_feature(enable = "ssse3")]
+                unsafe fn refill_ssse3(
+                    state: &mut ChaCha,
+                    drounds: u32,
+                    words: &mut [u32; $width],
+                ) {
+                    ChaCha::$fn_impl(state, drounds, words);
+                }
+                refill_ssse3
+            } else {
+                // fallback
+                unsafe fn refill_fallback(
+                    state: &mut ChaCha,
+                    drounds: u32,
+                    words: &mut [u32; $width],
+                ) {
+                    ChaCha::$fn_impl(state, drounds, words);
+                }
+                refill_fallback
+            }
+        }
+        unsafe { IMPL(self, drounds, words) }
+    }
+}}
 
 impl ChaCha {
     /// Set 32-bit block count, affecting next refill.
@@ -118,11 +234,15 @@ impl ChaCha {
     }
 
     #[inline(always)]
-    fn refill_impl(&mut self, drounds: u32, words: &mut [u32; BUFWORDS]) {
+    fn refill_wide_impl(&mut self, drounds: u32, words: &mut [u32; BUFWORDS]) {
+        use crate::wide::*;
         let k = u32x4::new(0x61707865, 0x3320646e, 0x79622d32, 0x6b206574);
-        // can ignore high word: value to increment is initially even
-        let d1 = self.d + u32x4::new(1, 0, 0, 0);
-        let blockct2 = (u64::from(d1.extract(0)) | (u64::from(d1.extract(1)) << 32)) + 1;
+        let blockct1 = (u64::from(self.d.extract(0)) | (u64::from(self.d.extract(1)) << 32)) + 1;
+        let d1 = self
+            .d
+            .replace(0, blockct1 as u32)
+            .replace(1, (blockct1 >> 32) as u32);
+        let blockct2 = blockct1 + 1;
         let d2 = d1
             .replace(0, blockct2 as u32)
             .replace(1, (blockct2 >> 32) as u32);
@@ -138,13 +258,19 @@ impl ChaCha {
             x = undiagonalize(round(diagonalize(x)));
         }
 
-        // can ignore high word
-        let d1 = self.d + u32x4::new(1, 0, 0, 0);
-        let blockct2 = (u64::from(d1.extract(0)) | (u64::from(d1.extract(1)) << 32)) + 1;
+        let blockct1 = (u64::from(self.d.extract(0)) | (u64::from(self.d.extract(1)) << 32)) + 1;
+        let d1 = self
+            .d
+            .replace(0, blockct1 as u32)
+            .replace(1, (blockct1 >> 32) as u32);
+        let blockct2 = blockct1 + 1;
         let d2 = d1
             .replace(0, blockct2 as u32)
             .replace(1, (blockct2 >> 32) as u32);
-        let d3 = d2 + u32x4::new(1, 0, 0, 0);
+        let blockct3 = blockct1 + 2;
+        let d3 = d1
+            .replace(0, blockct3 as u32)
+            .replace(1, (blockct3 >> 32) as u32);
 
         let (a, b, c, d) = (
             x.a.into_parts(),
@@ -178,106 +304,101 @@ impl ChaCha {
             .replace(1, (blockct4 >> 32) as u32);
     }
 
-    /// Fill a new buffer from the state, autoincrementing internal block count. Caller must count
-    /// blocks to ensure this doesn't wrap a 32/64 bit counter, as appropriate.
-    #[cfg(not(all(
-        feature = "std",
-        any(feature = "simd", feature = "packed_simd")
-    )))]
-    fn refill(&mut self, drounds: u32, words: &mut [u32; BUFWORDS]) {
-        self.refill_impl(drounds, words);
+    #[inline(always)]
+    fn refill_narrow_impl(&mut self, drounds: u32, words: &mut [u32; BLOCKWORDS]) {
+        use crate::narrow::*;
+        let k = u32x4::new(0x61707865, 0x3320646e, 0x79622d32, 0x6b206574);
+        let mut x = X4 {
+            a: k,
+            b: self.b,
+            c: self.c,
+            d: self.d,
+        };
+        for _ in 0..drounds {
+            x = round(x);
+            x = undiagonalize(round(diagonalize(x)));
+        }
+        (x.a + k).write_to_slice_unaligned(&mut words[0..4]);
+        (x.b + self.b).write_to_slice_unaligned(&mut words[4..8]);
+        (x.c + self.c).write_to_slice_unaligned(&mut words[8..12]);
+        (x.d + self.d).write_to_slice_unaligned(&mut words[12..16]);
+        for w in words.iter_mut() {
+            *w = w.to_le();
+        }
+        let blockct1 = (u64::from(self.d.extract(0)) | (u64::from(self.d.extract(1)) << 32)) + 1;
+        self.d = self
+            .d
+            .replace(0, blockct1 as u32)
+            .replace(1, (blockct1 >> 32) as u32);
     }
 
-    /// Fill a new buffer from the state, autoincrementing internal block count. Caller must count
-    /// blocks to ensure this doesn't wrap a 32/64 bit counter, as appropriate.
-    #[cfg(all(
-        feature = "std",
-        any(feature = "simd", feature = "packed_simd")
-    ))]
-    fn refill(&mut self, drounds: u32, words: &mut [u32; BUFWORDS]) {
-        type Refill = unsafe fn(state: &mut ChaCha, drounds: u32, words: &mut [u32; BUFWORDS]);
-        lazy_static! {
-            static ref IMPL: Refill = { dispatch_init() };
-        }
-        fn dispatch_init() -> Refill {
-            if is_x86_feature_detected!("avx2") {
-                // wide issue
-                #[target_feature(enable = "avx2")]
-                unsafe fn refill_avx2(
-                    state: &mut ChaCha,
-                    drounds: u32,
-                    words: &mut [u32; BUFWORDS],
-                ) {
-                    ChaCha::refill_impl(state, drounds, words);
-                }
-                refill_avx2
-            } else if is_x86_feature_detected!("ssse3") {
-                // faster rotates
-                #[target_feature(enable = "ssse3")]
-                unsafe fn refill_ssse3(
-                    state: &mut ChaCha,
-                    drounds: u32,
-                    words: &mut [u32; BUFWORDS],
-                ) {
-                    ChaCha::refill_impl(state, drounds, words);
-                }
-                refill_ssse3
-            } else {
-                // fallback
-                unsafe fn refill_fallback(
-                    state: &mut ChaCha,
-                    drounds: u32,
-                    words: &mut [u32; BUFWORDS],
-                ) {
-                    ChaCha::refill_impl(state, drounds, words);
-                }
-                refill_fallback
-            }
-        }
-        unsafe { IMPL(self, drounds, words) }
-    }
+    impl_dispatch!(refill_wide, refill_wide_impl, BUFWORDS);
+    impl_dispatch!(refill_narrow, refill_narrow_impl, BLOCKWORDS);
 }
 
 #[derive(Clone)]
 struct Buffer {
     state: ChaCha,
-    out: WordBytes,
-    pos: u32,
+    out: Block,
+    have: i8,
     len: u64,
+    fresh: bool,
 }
 
 impl Buffer {
-    fn try_apply_keystream(&mut self, data: &mut [u8], drounds: u32) -> Result<(), LoopError> {
-        let mut pos = self.pos as usize;
-        let (d0, d1) = data.split_at_mut(cmp::min(BUFSZ - (pos % BUFSZ), data.len()));
-        let d1 = d1.chunks_mut(BUFSZ);
-        // check for overflow
-        let (l, o) = self
-            .len
-            .overflowing_sub(d1.len() as u64 + (pos / BUFSZ) as u64);
-        if o {
+    fn try_apply_keystream(&mut self, mut data: &mut [u8], drounds: u32) -> Result<(), LoopError> {
+        // Lazy fill: after a seek() we may be partway into a block we don't have yet.
+        // We can do this before the overflow check because this is not an effect of the current
+        // operation.
+        if self.have < 0 {
+            self.state
+                .refill_narrow(drounds, unsafe { &mut self.out.words });
+            self.have += BLOCK as i8;
+            // checked in seek()
+            self.len -= 1;
+        }
+        let mut have = self.have as usize;
+        let have_ready = cmp::min(have, data.len());
+        // Check if the requested position would wrap the block counter. Use self.fresh as an extra
+        // bit to distinguish the initial state from the valid state with no blocks left.
+        let datalen = (data.len() - have_ready) as u64;
+        let blocks_needed = datalen / BLOCK64 + u64::from(datalen % BLOCK64 != 0);
+        let (l, o) = self.len.overflowing_sub(blocks_needed);
+        if o && !self.fresh {
             return Err(LoopError);
         }
         self.len = l;
-        // lazy fill for startup / seek / emptied buffer
-        if pos >= BUFSZ {
-            self.state.refill(drounds, unsafe { &mut self.out.words });
-            pos -= BUFSZ;
-        }
-        // consume remaining keybytes
-        for (data_b, key_b) in d0.iter_mut().zip(unsafe { &self.out.bytes[pos..] }) {
+        self.fresh &= blocks_needed == 0;
+        // If we have data in the buffer, use that first.
+        let (d0, d1) = data.split_at_mut(have_ready);
+        for (data_b, key_b) in d0
+            .iter_mut()
+            .zip(unsafe { &self.out.bytes[(BLOCK - have)..] })
+        {
             *data_b ^= *key_b;
         }
-        pos += d0.len();
-        // use new blocks of keybytes for remaining data
-        for dd in d1 {
-            self.state.refill(drounds, unsafe { &mut self.out.words });
+        data = d1;
+        have -= have_ready;
+        // Process wide chunks.
+        let (d0, d1) = data.split_at_mut(data.len() & !(BUFSZ - 1));
+        for dd in d0.chunks_exact_mut(BUFSZ) {
+            let mut buf = WordBytes::default();
+            self.state.refill_wide(drounds, unsafe { &mut buf.words });
+            for (data_b, key_b) in dd.iter_mut().zip(unsafe { buf.bytes.iter() }) {
+                *data_b ^= *key_b;
+            }
+        }
+        let data = d1;
+        // Handle the tail a block at a time so we'll have storage for any leftovers.
+        for dd in data.chunks_mut(BLOCK) {
+            self.state
+                .refill_narrow(drounds, unsafe { &mut self.out.words });
             for (data_b, key_b) in dd.iter_mut().zip(unsafe { self.out.bytes.iter() }) {
                 *data_b ^= *key_b;
             }
-            pos = dd.len();
+            have = BLOCK - dd.len();
         }
-        self.pos = pos as u32;
+        self.have = have as i8;
         Ok(())
     }
 }
@@ -337,15 +458,14 @@ where
         ChaChaAny {
             state: Buffer {
                 state,
-                out: WordBytes {
-                    words: [0; BUFWORDS],
-                },
-                pos: BUFSZ8,
+                out: Block::default(),
+                have: 0,
                 len: if NonceSize::U32 == 12 {
-                    BIG_LEN
-                } else {
                     SMALL_LEN
+                } else {
+                    BIG_LEN
                 },
+                fresh: NonceSize::U32 != 12,
             },
             _nonce_size: Default::default(),
             _rounds: Default::default(),
@@ -361,6 +481,7 @@ impl<Rounds: Unsigned + Default> NewStreamCipher for ChaChaAny<U24, Rounds, X> {
         key: &GenericArray<u8, Self::KeySize>,
         nonce: &GenericArray<u8, Self::NonceSize>,
     ) -> Self {
+        use crate::narrow::*;
         let k = u32x4::new(0x61707865, 0x3320646e, 0x79622d32, 0x6b206574);
         let key0 = u32x4::new(
             LE::read_u32(&key[0..4]),
@@ -387,28 +508,27 @@ impl<Rounds: Unsigned + Default> NewStreamCipher for ChaChaAny<U24, Rounds, X> {
             LE::read_u32(&nonce[20..24]),
         );
         let mut x = X4 {
-            a: u32x4x4::splat(k),
-            b: u32x4x4::splat(key0),
-            c: u32x4x4::splat(key1),
-            d: u32x4x4::splat(nonce0),
+            a: k,
+            b: key0,
+            c: key1,
+            d: nonce0,
         };
         for _ in 0..Rounds::U32 {
             x = round(x);
             x = undiagonalize(round(diagonalize(x)));
         }
         let state = ChaCha {
-            b: x.a.into_parts().0,
-            c: x.d.into_parts().0,
+            b: x.a,
+            c: x.d,
             d: ctr_nonce1,
         };
         ChaChaAny {
             state: Buffer {
                 state,
-                out: WordBytes {
-                    words: [0; BUFWORDS],
-                },
-                pos: BUFSZ8,
+                out: Block::default(),
+                have: 0,
                 len: BIG_LEN,
+                fresh: true,
             },
             _nonce_size: Default::default(),
             _rounds: Default::default(),
@@ -420,22 +540,29 @@ impl<Rounds: Unsigned + Default> NewStreamCipher for ChaChaAny<U24, Rounds, X> {
 impl<NonceSize: Unsigned, Rounds, IsX> SyncStreamCipherSeek for ChaChaAny<NonceSize, Rounds, IsX> {
     #[inline]
     fn current_pos(&self) -> u64 {
-        u64::from(self.state.state.d.extract(0))
+        unimplemented!()
+        /*
+        if NonceSize::U32 != 12 {
+            ((u64::from(self.state.state.d.extract(0))
+                | (u64::from(self.state.state.d.extract(1)) << 32))) * BLOCK64
+        } else {
+            u64::from(self.state.state.d.extract(0)) * BLOCK64
+        }
+        */
     }
     #[inline]
     fn seek(&mut self, ct: u64) {
-        let blockct = (ct / BLOCK & !(BUFBLOCKS - 1)) / 2;
+        let blockct = ct / BLOCK64;
         if NonceSize::U32 != 12 {
-            self.state.state.seek64(blockct << 1);
-            self.state.pos = BUFSZ8 + (ct % BUFSZ64) as u32;
-            self.state.len = BIG_LEN - (blockct / (BUFBLOCKS / 2));
+            self.state.len = BIG_LEN.wrapping_sub(blockct);
+            self.state.state.seek64(blockct);
+            self.state.fresh = blockct == 0;
         } else {
-            let blockct32 = blockct as u32;
-            assert_eq!(blockct, u64::from(blockct32));
-            self.state.state.seek32(blockct32 << 1);
-            self.state.len = SMALL_LEN - (blockct / (BUFBLOCKS / 2));
+            assert!(blockct < SMALL_LEN || (blockct == SMALL_LEN && ct % BLOCK64 == 0));
+            self.state.len = SMALL_LEN - blockct;
+            self.state.state.seek32(blockct as u32);
         }
-        self.state.pos = BUFSZ8 + (ct % BUFSZ64) as u32;
+        self.state.have = -((ct % BLOCK64) as i8);
     }
 }
 
