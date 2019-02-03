@@ -1,6 +1,32 @@
 // copyright 2019 Kaz Wesley
 
 //! Pure Rust ChaCha with SIMD optimizations.
+//!
+//! Usage:
+//! ```
+//! extern crate c2_chacha;
+//!
+//! use c2_chacha::stream_cipher::{NewStreamCipher, SyncStreamCipher, SyncStreamCipherSeek};
+//! use c2_chacha::{ChaCha20, ChaCha12};
+//!
+//! let key = b"very secret key-the most secret.";
+//! let iv = b"my nonce";
+//! let plaintext = b"The quick brown fox jumps over the lazy dog.";
+//!
+//! let mut buffer = plaintext.to_vec();
+//! // create cipher instance
+//! let mut cipher = ChaCha20::new_var(key, iv).unwrap();
+//! // apply keystream (encrypt)
+//! cipher.apply_keystream(&mut buffer);
+//! // and decrypt it back
+//! cipher.seek(0);
+//! cipher.apply_keystream(&mut buffer);
+//! // stream ciphers can be used with streaming messages
+//! let mut cipher = ChaCha12::new_var(key, iv).unwrap();
+//! for chunk in buffer.chunks_mut(3) {
+//!     cipher.apply_keystream(chunk);
+//! }
+//! ```
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -12,7 +38,7 @@ extern crate hex_literal;
 #[cfg(feature = "std")]
 #[macro_use]
 extern crate lazy_static;
-extern crate stream_cipher;
+pub extern crate stream_cipher;
 
 #[cfg(feature = "packed_simd")]
 extern crate packed_simd_crate;
@@ -46,32 +72,6 @@ const BUFWORDS: usize = (BLOCK64 * BUFBLOCKS / 4) as usize;
 
 const BIG_LEN: u64 = 0;
 const SMALL_LEN: u64 = 1 << 32;
-
-#[derive(Clone, Copy)]
-union Block {
-    words: [u32; BLOCKWORDS],
-    bytes: [u8; BLOCK],
-}
-impl Default for Block {
-    fn default() -> Self {
-        Block {
-            words: [0; BLOCKWORDS],
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-union WordBytes {
-    words: [u32; BUFWORDS],
-    bytes: [u8; BUFSZ],
-}
-impl Default for WordBytes {
-    fn default() -> Self {
-        WordBytes {
-            words: [0; BUFWORDS],
-        }
-    }
-}
 
 macro_rules! impl_round {
     ($state:ident, $vec:ident) => {
@@ -124,13 +124,6 @@ mod narrow {
     use super::*;
     use crypto_simd::*;
     impl_round!(X4, u32x4);
-}
-
-#[derive(Clone)]
-struct ChaCha {
-    b: u32x4,
-    c: u32x4,
-    d: u32x4,
 }
 
 macro_rules! impl_dispatch {
@@ -336,14 +329,62 @@ impl ChaCha {
     impl_dispatch!(refill_narrow, refill_narrow_impl, BLOCKWORDS);
 }
 
-#[derive(Clone)]
-struct Buffer {
-    state: ChaCha,
-    out: Block,
-    have: i8,
-    len: u64,
-    fresh: bool,
+mod chacha_any {
+    use super::*;
+    #[derive(Clone, Copy)]
+    pub union Block {
+        pub words: [u32; BLOCKWORDS],
+        pub bytes: [u8; BLOCK],
+    }
+    impl Default for Block {
+        fn default() -> Self {
+            Block {
+                words: [0; BLOCKWORDS],
+            }
+        }
+    }
+    #[derive(Clone, Copy)]
+    pub union WordBytes {
+        pub words: [u32; BUFWORDS],
+        pub bytes: [u8; BUFSZ],
+    }
+    impl Default for WordBytes {
+        fn default() -> Self {
+            WordBytes {
+                words: [0; BUFWORDS],
+            }
+        }
+    }
+
+    #[derive(Clone)]
+    pub struct ChaCha {
+        pub b: u32x4,
+        pub c: u32x4,
+        pub d: u32x4,
+    }
+
+    #[derive(Clone)]
+    pub struct Buffer {
+        pub state: ChaCha,
+        pub out: Block,
+        pub have: i8,
+        pub len: u64,
+        pub fresh: bool,
+    }
+
+    #[derive(Default)]
+    pub struct X;
+    #[derive(Default)]
+    pub struct O;
+    #[derive(Clone)]
+    pub struct ChaChaAny<NonceSize, Rounds, IsX> {
+        pub state: Buffer,
+        pub _nonce_size: NonceSize,
+        pub _rounds: Rounds,
+        pub _is_x: IsX,
+    }
 }
+use self::chacha_any::*;
 
 impl Buffer {
     fn try_apply_keystream(&mut self, mut data: &mut [u8], drounds: u32) -> Result<(), LoopError> {
@@ -401,19 +442,6 @@ impl Buffer {
         self.have = have as i8;
         Ok(())
     }
-}
-
-#[derive(Default)]
-pub struct X;
-#[derive(Default)]
-pub struct O;
-
-#[derive(Clone)]
-pub struct ChaChaAny<NonceSize, Rounds, IsX> {
-    state: Buffer,
-    _nonce_size: NonceSize,
-    _rounds: Rounds,
-    _is_x: IsX,
 }
 
 impl<NonceSize, Rounds> NewStreamCipher for ChaChaAny<NonceSize, Rounds, O>
@@ -573,10 +601,16 @@ impl<NonceSize, Rounds: Unsigned, IsX> SyncStreamCipher for ChaChaAny<NonceSize,
     }
 }
 
+/// IETF RFC 7539 ChaCha. Unsuitable for messages longer than 256 GiB.
 pub type Ietf = ChaChaAny<U12, U10, O>;
+/// ChaCha20, as used in several standards; from Bernstein's original publication.
 pub type ChaCha20 = ChaChaAny<U8, U10, O>;
+/// Similar to ChaCha20, but with fewer rounds for higher performance.
 pub type ChaCha12 = ChaChaAny<U8, U6, O>;
+/// Similar to ChaCha20, but with fewer rounds for higher performance.
 pub type ChaCha8 = ChaChaAny<U8, U4, O>;
+/// Constructed analogously to XSalsa20; mixes during initialization to support both a long nonce
+/// and a full-length (64-bit) block counter.
 pub type XChaCha20 = ChaChaAny<U24, U10, X>;
 
 #[cfg(test)]
