@@ -7,7 +7,7 @@ matrix:
           script: cargo test --verbose --all --release
         - rust: 1.31.1
           script: cargo test --verbose --all --release
-
+    allow_failure:
         - rust: nightly
           env: FAILFAST=1 
           script: ./test_alt_simd.sh

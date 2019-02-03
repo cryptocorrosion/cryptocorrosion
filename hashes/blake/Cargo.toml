@@ -10,11 +10,11 @@ categories = ["cryptography", "no-std"]
 
 [dependencies]
 block-buffer = "0.7"
-crypto-simd = "0.1"
+crypto-simd = { version = "0.2" }
 digest = "0.8"
 packed_simd_crate = { package = "packed_simd", version = "0.3.2", optional = true }
-simd = { package = "ppv-lite86", version = "0.1.0", optional = true }
-ppv-null = "0.1"
+simd = { package = "ppv-lite86", version = "0.2.0", optional = true }
+ppv-null = { version = "0.2" }
 
 [features]
 default = ["simd", "std"]

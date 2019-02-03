@@ -1,6 +1,6 @@
 [package]
 name = "crypto-simd"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["The CryptoCorrosion Contributors"]
 edition = "2018"
 license = "MIT/Apache-2.0"
