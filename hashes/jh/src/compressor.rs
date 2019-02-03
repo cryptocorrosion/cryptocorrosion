@@ -1,7 +1,7 @@
 #![allow(non_upper_case_globals)]
 
 use core::ptr;
-#[allow(unused)]
+#[cfg(feature = "packed_simd")]
 use crypto_simd::*;
 use digest::generic_array::typenum::U64;
 use digest::generic_array::GenericArray;
@@ -145,7 +145,9 @@ union X2Bytes {
 }
 
 #[inline(always)]
-unsafe fn f8(state: &mut X8, data: *const u128x1) {
+unsafe fn f8(state: &mut X8, data: *const u8) {
+    #[allow(clippy::cast_ptr_alignment)]
+    let data = data as *const u128x1;
     let mut y = *state;
     y.0 ^= ptr::read_unaligned(data);
     y.1 ^= ptr::read_unaligned(data.offset(1));
@@ -193,7 +195,7 @@ impl Compressor {
     )))]
     pub fn input(&mut self, data: &GenericArray<u8, U64>) {
         unsafe {
-            f8(&mut self.cv, data.as_ptr() as *const _);
+            f8(&mut self.cv, data.as_ptr());
         }
     }
     #[inline]
@@ -203,26 +205,26 @@ impl Compressor {
         any(target_arch = "x86", target_arch = "x86_64")
     ))]
     pub fn input(&mut self, data: &GenericArray<u8, U64>) {
-        type F8 = unsafe fn(state: &mut X8, data: *const u128x1);
+        type F8 = unsafe fn(state: &mut X8, data: *const u8);
         lazy_static! {
             static ref IMPL: F8 = { select_impl() };
         }
         fn select_impl() -> F8 {
             if cfg!(feature = "avx2") && is_x86_feature_detected!("avx2") {
                 #[target_feature(enable = "avx2")]
-                unsafe fn f8_avx2(state: &mut X8, data: *const u128x1) {
+                unsafe fn f8_avx2(state: &mut X8, data: *const u8) {
                     f8(state, data);
                 }
                 f8_avx2
             } else if is_x86_feature_detected!("ssse3") {
                 #[target_feature(enable = "ssse3")]
-                unsafe fn f8_ssse3(state: &mut X8, data: *const u128x1) {
+                unsafe fn f8_ssse3(state: &mut X8, data: *const u8) {
                     f8(state, data);
                 }
                 f8_ssse3
             } else if is_x86_feature_detected!("sse2") {
                 #[target_feature(enable = "sse2")]
-                unsafe fn f8_sse2(state: &mut X8, data: *const u128x1) {
+                unsafe fn f8_sse2(state: &mut X8, data: *const u8) {
                     f8(state, data);
                 }
                 f8_sse2
@@ -231,7 +233,7 @@ impl Compressor {
             }
         }
         unsafe {
-            IMPL(&mut self.cv, data.as_ptr() as *const _);
+            IMPL(&mut self.cv, data.as_ptr());
         }
     }
     #[inline]

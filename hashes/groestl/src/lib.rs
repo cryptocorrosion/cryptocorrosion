@@ -20,8 +20,8 @@ use core::fmt::{Debug, Formatter, Result};
 use digest::generic_array::GenericArray as DGenericArray;
 pub use digest::Digest;
 
-mod sse2;
-use crate::sse2::{init1024, init512, of1024, of512, tf1024, tf512};
+mod compressor;
+use crate::compressor::{init1024, init512, of1024, of512, tf1024, tf512};
 
 #[repr(C, align(16))]
 struct Align16<T>(T);
@@ -29,11 +29,11 @@ struct Align16<T>(T);
 type Block512 = [u64; 512 / 64];
 union CvBytes512 {
     block: Block512,
-    cv: sse2::X4,
+    cv: compressor::X4,
 }
 #[derive(Clone)]
 struct Compressor512 {
-    cv: sse2::X4,
+    cv: compressor::X4,
 }
 impl Compressor512 {
     fn new(block: Block512) -> Self {
@@ -52,11 +52,11 @@ impl Compressor512 {
 type Block1024 = [u64; 1024 / 64];
 union CvBytes1024 {
     block: Block1024,
-    cv: sse2::X8,
+    cv: compressor::X8,
 }
 #[derive(Clone)]
 struct Compressor1024 {
-    cv: sse2::X8,
+    cv: compressor::X8,
 }
 impl Compressor1024 {
     fn new(block: Block1024) -> Self {

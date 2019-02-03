@@ -74,43 +74,33 @@ impl X8 {
         )
     }
     #[inline(always)]
-    fn shuffle(
-        self,
-        i0: usize,
-        i1: usize,
-        i2: usize,
-        i3: usize,
-        i4: usize,
-        i5: usize,
-        i6: usize,
-        i7: usize,
-    ) -> Self {
+    fn shuffle(self, i: (usize, usize, usize, usize, usize, usize, usize, usize)) -> Self {
         let xs = [
             self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7,
         ];
         X8(
-            xs[i0], xs[i1], xs[i2], xs[i3], xs[i4], xs[i5], xs[i6], xs[i7],
+            xs[i.0], xs[i.1], xs[i.2], xs[i.3], xs[i.4], xs[i.5], xs[i.6], xs[i.7],
         )
     }
     #[inline(always)]
     fn rotl1(self) -> Self {
-        self.shuffle(1, 2, 3, 4, 5, 6, 7, 0)
+        self.shuffle((1, 2, 3, 4, 5, 6, 7, 0))
     }
     #[inline(always)]
     fn rotl2(self) -> Self {
-        self.shuffle(2, 3, 4, 5, 6, 7, 0, 1)
+        self.shuffle((2, 3, 4, 5, 6, 7, 0, 1))
     }
     #[inline(always)]
     fn rotl3(self) -> Self {
-        self.shuffle(3, 4, 5, 6, 7, 0, 1, 2)
+        self.shuffle((3, 4, 5, 6, 7, 0, 1, 2))
     }
     #[inline(always)]
     fn rotl4(self) -> Self {
-        self.shuffle(4, 5, 6, 7, 0, 1, 2, 3)
+        self.shuffle((4, 5, 6, 7, 0, 1, 2, 3))
     }
     #[inline(always)]
     fn rotl6(self) -> Self {
-        self.shuffle(6, 7, 0, 1, 2, 3, 4, 5)
+        self.shuffle((6, 7, 0, 1, 2, 3, 4, 5))
     }
 }
 
@@ -146,7 +136,7 @@ impl Map2 for (X8, X8) {
 #[inline(always)]
 fn mul2(i: __m128i) -> __m128i {
     unsafe {
-        let all_1b = _mm_set1_epi64x(0x1b1b1b1b1b1b1b1b);
+        let all_1b = _mm_set1_epi64x(0x1b1b_1b1b_1b1b_1b1b);
         let j = _mm_and_si128(_mm_cmpgt_epi8(_mm_cvtsi64_si128(0), i), all_1b);
         let i = _mm_add_epi8(i, i);
         _mm_xor_si128(i, j)
@@ -178,14 +168,14 @@ unsafe fn submix(a: X8) -> X8 {
 /// output: a 512-bit state with two rows in one xmm
 #[inline(always)]
 unsafe fn transpose_a(i: X4) -> X4 {
-    let mask = _mm_set_epi64x(0x0f070b030e060a02, 0x0d0509010c040800);
+    let mask = _mm_set_epi64x(0x0f07_0b03_0e06_0a02, 0x0d05_0901_0c04_0800);
     let i = i.map(|x| _mm_shuffle_epi8(x, mask));
     let z = X4(
         _mm_unpacklo_epi16(i.0, i.1),
         _mm_unpackhi_epi16(i.0, i.1),
         _mm_unpacklo_epi16(i.2, i.3),
         _mm_unpackhi_epi16(i.2, i.3),
-    ).map(|x| _mm_shuffle_epi32(x, 0b11011000));
+    ).map(|x| _mm_shuffle_epi32(x, 0b1101_1000));
     X4(
         _mm_unpacklo_epi32(z.0, z.2),
         _mm_unpacklo_epi32(z.1, z.3),
@@ -257,43 +247,48 @@ unsafe fn transpose_o_b_inv(i: X8) -> X4 {
 #[inline(always)]
 unsafe fn round(i: i64, a: X8) -> X8 {
     // AddRoundConstant
-    let ff = 0xffffffffffffffffu64 as i64;
-    let l0 = _mm_set_epi64x(ff, (i * 0x0101010101010101) ^ 0x7060504030201000);
+    let ff = 0xffff_ffff_ffff_ffffu64 as i64;
+    let l0 = _mm_set_epi64x(ff, (i * 0x0101_0101_0101_0101) ^ 0x7060_5040_3020_1000);
     let lx = _mm_set_epi64x(ff, 0);
-    let l7 = _mm_set_epi64x((i * 0x0101010101010101) ^ 0x8f9fafbfcfdfefffu64 as i64, 0);
+    let l7 = _mm_set_epi64x(
+        (i * 0x0101_0101_0101_0101) ^ 0x8f9f_afbf_cfdf_efffu64 as i64,
+        0,
+    );
     let a = a ^ X8(l0, lx, lx, lx, lx, lx, lx, l7);
     // ShiftBytes + SubBytes (interleaved)
     let mask = X8(
-        _mm_set_epi64x(0x03060a0d08020509, 0x0c0f0104070b0e00),
-        _mm_set_epi64x(0x04070c0f0a03060b, 0x0e090205000d0801),
-        _mm_set_epi64x(0x05000e090c04070d, 0x080b0306010f0a02),
-        _mm_set_epi64x(0x0601080b0e05000f, 0x0a0d040702090c03),
-        _mm_set_epi64x(0x0702090c0f060108, 0x0b0e0500030a0d04),
-        _mm_set_epi64x(0x00030b0e0907020a, 0x0d080601040c0f05),
-        _mm_set_epi64x(0x01040d080b00030c, 0x0f0a0702050e0906),
-        _mm_set_epi64x(0x02050f0a0d01040e, 0x090c000306080b07),
+        _mm_set_epi64x(0x0306_0a0d_0802_0509, 0x0c0f_0104_070b_0e00),
+        _mm_set_epi64x(0x0407_0c0f_0a03_060b, 0x0e09_0205_000d_0801),
+        _mm_set_epi64x(0x0500_0e09_0c04_070d, 0x080b_0306_010f_0a02),
+        _mm_set_epi64x(0x0601_080b_0e05_000f, 0x0a0d_0407_0209_0c03),
+        _mm_set_epi64x(0x0702_090c_0f06_0108, 0x0b0e_0500_030a_0d04),
+        _mm_set_epi64x(0x0003_0b0e_0907_020a, 0x0d08_0601_040c_0f05),
+        _mm_set_epi64x(0x0104_0d08_0b00_030c, 0x0f0a_0702_050e_0906),
+        _mm_set_epi64x(0x0205_0f0a_0d01_040e, 0x090c_0003_0608_0b07),
     );
     let a = (a, mask).map(|x, y| _mm_shuffle_epi8(x, y));
     submix(a)
 }
 
 #[inline(always)]
-unsafe fn rounds_p_q(p: X8) -> X8 {
-    let p = round(0, p);
-    let p = round(1, p);
-    let p = round(2, p);
-    let p = round(3, p);
-    let p = round(4, p);
-    let p = round(5, p);
-    let p = round(6, p);
-    let p = round(7, p);
-    let p = round(8, p);
-    let p = round(9, p);
+unsafe fn rounds_p_q(mut p: X8) -> X8 {
+    p = round(0, p);
+    p = round(1, p);
+    p = round(2, p);
+    p = round(3, p);
+    p = round(4, p);
+    p = round(5, p);
+    p = round(6, p);
+    p = round(7, p);
+    p = round(8, p);
+    p = round(9, p);
     p
 }
 
 #[inline(always)]
-unsafe fn tf512_impl(cv: &mut X4, data: *const __m128i) {
+unsafe fn tf512_impl(cv: &mut X4, data: *const u8) {
+    #[allow(clippy::cast_ptr_alignment)]
+    let data = data as *const __m128i;
     let d0 = _mm_loadu_si128(data);
     let d1 = _mm_loadu_si128(data.offset(1));
     let d2 = _mm_loadu_si128(data.offset(2));
@@ -329,10 +324,15 @@ unsafe fn init512_impl(cv: X4) -> X4 {
 
 #[inline(always)]
 unsafe fn transpose(i: X8) -> X8 {
-    let i = i.map(|x| _mm_shuffle_epi8(x, _mm_set_epi64x(0x0f070b030e060a02, 0x0d0509010c040800)));
+    let i = i.map(|x| {
+        _mm_shuffle_epi8(
+            x,
+            _mm_set_epi64x(0x0f07_0b03_0e06_0a02, 0x0d05_0901_0c04_0800),
+        )
+    });
     let (eve, odd) = (X4(i.0, i.2, i.4, i.6), X4(i.1, i.3, i.5, i.7));
-    let i = (eve, odd).map(|e, o| _mm_shuffle_epi32(_mm_unpacklo_epi16(e, o), 0b11011000));
-    let t = (eve, odd).map(|e, o| _mm_shuffle_epi32(_mm_unpackhi_epi16(e, o), 0b11011000));
+    let i = (eve, odd).map(|e, o| _mm_shuffle_epi32(_mm_unpacklo_epi16(e, o), 0b1101_1000));
+    let t = (eve, odd).map(|e, o| _mm_shuffle_epi32(_mm_unpackhi_epi16(e, o), 0b1101_1000));
     let t = X8(
         _mm_unpacklo_epi32(t.0, t.1),
         _mm_unpacklo_epi32(i.0, i.1),
@@ -367,7 +367,12 @@ unsafe fn transpose_inv(i: X8) -> X8 {
         _mm_unpackhi_epi64(i.4, i.5),
         _mm_unpacklo_epi64(i.6, i.7),
         _mm_unpackhi_epi64(i.6, i.7),
-    ).map(|x| _mm_shuffle_epi8(x, _mm_set_epi64x(0x0f070b030e060a02, 0x0d0509010c040800)));
+    ).map(|x| {
+        _mm_shuffle_epi8(
+            x,
+            _mm_set_epi64x(0x0f07_0b03_0e06_0a02, 0x0d05_0901_0c04_0800),
+        )
+    });
     let i = X8(
         _mm_unpacklo_epi16(i.0, i.2),
         _mm_unpacklo_epi16(i.1, i.3),
@@ -377,7 +382,7 @@ unsafe fn transpose_inv(i: X8) -> X8 {
         _mm_unpacklo_epi16(i.5, i.7),
         _mm_unpackhi_epi16(i.4, i.6),
         _mm_unpackhi_epi16(i.5, i.7),
-    ).map(|x| _mm_shuffle_epi32(x, 0b11011000));
+    ).map(|x| _mm_shuffle_epi32(x, 0b1101_1000));
     X8(
         _mm_unpacklo_epi32(i.0, i.4),
         _mm_unpacklo_epi32(i.2, i.6),
@@ -392,23 +397,23 @@ unsafe fn transpose_inv(i: X8) -> X8 {
 
 #[inline(always)]
 unsafe fn rounds_p(mut x: X8) -> X8 {
-    const O1: i64 = 0x0101010101010101;
+    const O1: i64 = 0x0101_0101_0101_0101;
     let mut const_p = [_mm_cvtsi64_si128(0); 14];
     for (i, p) in (0..).zip(&mut const_p) {
         *p = _mm_set_epi64x(
-            (i * O1) ^ 0xf0e0d0c0b0a09080u64 as i64,
-            (i * O1) ^ 0x7060504030201000,
+            (i * O1) ^ 0xf0e0_d0c0_b0a0_9080u64 as i64,
+            (i * O1) ^ 0x7060_5040_3020_1000,
         );
     }
     let mask = X8(
-        _mm_set_epi64x(0x0306090c0f020508, 0x0b0e0104070a0d00),
-        _mm_set_epi64x(0x04070a0d00030609, 0x0c0f0205080b0e01),
-        _mm_set_epi64x(0x05080b0e0104070a, 0x0d000306090c0f02),
-        _mm_set_epi64x(0x06090c0f0205080b, 0x0e0104070a0d0003),
-        _mm_set_epi64x(0x070a0d000306090c, 0x0f0205080b0e0104),
-        _mm_set_epi64x(0x080b0e0104070a0d, 0x000306090c0f0205),
-        _mm_set_epi64x(0x090c0f0205080b0e, 0x0104070a0d000306),
-        _mm_set_epi64x(0x0e0104070a0d0003, 0x06090c0f0205080b),
+        _mm_set_epi64x(0x0306_090c_0f02_0508, 0x0b0e_0104_070a_0d00),
+        _mm_set_epi64x(0x0407_0a0d_0003_0609, 0x0c0f_0205_080b_0e01),
+        _mm_set_epi64x(0x0508_0b0e_0104_070a, 0x0d00_0306_090c_0f02),
+        _mm_set_epi64x(0x0609_0c0f_0205_080b, 0x0e01_0407_0a0d_0003),
+        _mm_set_epi64x(0x070a_0d00_0306_090c, 0x0f02_0508_0b0e_0104),
+        _mm_set_epi64x(0x080b_0e01_0407_0a0d, 0x0003_0609_0c0f_0205),
+        _mm_set_epi64x(0x090c_0f02_0508_0b0e, 0x0104_070a_0d00_0306),
+        _mm_set_epi64x(0x0e01_0407_0a0d_0003, 0x0609_0c0f_0205_080b),
     );
     for p in const_p.chunks_exact(2) {
         // 2 rounds at a time so we can flip-flop between register sets
@@ -424,25 +429,25 @@ unsafe fn rounds_p(mut x: X8) -> X8 {
 
 #[inline(always)]
 unsafe fn rounds_q(mut x: X8) -> X8 {
-    const O1: i64 = 0x0101010101010101;
+    const O1: i64 = 0x0101_0101_0101_0101;
     let mut const_q = [_mm_cvtsi64_si128(0); 14];
     for (i, q) in (0..).zip(&mut const_q) {
         *q = _mm_set_epi64x(
-            (i * O1) ^ 0x0f1f2f3f4f5f6f7f,
-            (i * O1) ^ 0x8f9fafbfcfdfefffu64 as i64,
+            (i * O1) ^ 0x0f1f_2f3f_4f5f_6f7f,
+            (i * O1) ^ 0x8f9f_afbf_cfdf_efffu64 as i64,
         );
     }
     let mask = X8(
-        _mm_set_epi64x(0x0306090c0f020508, 0x0b0e0104070a0d00),
-        _mm_set_epi64x(0x04070a0d00030609, 0x0c0f0205080b0e01),
-        _mm_set_epi64x(0x05080b0e0104070a, 0x0d000306090c0f02),
-        _mm_set_epi64x(0x06090c0f0205080b, 0x0e0104070a0d0003),
-        _mm_set_epi64x(0x070a0d000306090c, 0x0f0205080b0e0104),
-        _mm_set_epi64x(0x080b0e0104070a0d, 0x000306090c0f0205),
-        _mm_set_epi64x(0x090c0f0205080b0e, 0x0104070a0d000306),
-        _mm_set_epi64x(0x0e0104070a0d0003, 0x06090c0f0205080b),
-    ).shuffle(1, 3, 5, 7, 0, 2, 4, 6);
-    let f = _mm_set1_epi64x(0xffffffffffffffffu64 as i64);
+        _mm_set_epi64x(0x0306_090c_0f02_0508, 0x0b0e_0104_070a_0d00),
+        _mm_set_epi64x(0x0407_0a0d_0003_0609, 0x0c0f_0205_080b_0e01),
+        _mm_set_epi64x(0x0508_0b0e_0104_070a, 0x0d00_0306_090c_0f02),
+        _mm_set_epi64x(0x0609_0c0f_0205_080b, 0x0e01_0407_0a0d_0003),
+        _mm_set_epi64x(0x070a_0d00_0306_090c, 0x0f02_0508_0b0e_0104),
+        _mm_set_epi64x(0x080b_0e01_0407_0a0d, 0x0003_0609_0c0f_0205),
+        _mm_set_epi64x(0x090c_0f02_0508_0b0e, 0x0104_070a_0d00_0306),
+        _mm_set_epi64x(0x0e01_0407_0a0d_0003, 0x0609_0c0f_0205_080b),
+    ).shuffle((1, 3, 5, 7, 0, 2, 4, 6));
+    let f = _mm_set1_epi64x(0xffff_ffff_ffff_ffffu64 as i64);
     for q in const_q.chunks_exact(2) {
         // 2 rounds at a time so we can flip-flop between register sets
         x = (x ^ X8(f, f, f, f, f, f, f, q[0]), mask).map(|x, m| _mm_shuffle_epi8(x, m));
@@ -459,7 +464,9 @@ unsafe fn init1024_impl(cv: X8) -> X8 {
 }
 
 #[inline(always)]
-unsafe fn tf1024_impl(cv: &mut X8, data: *const __m128i) {
+unsafe fn tf1024_impl(cv: &mut X8, data: *const u8) {
+    #[allow(clippy::cast_ptr_alignment)]
+    let data = data as *const __m128i;
     let p = X8(
         _mm_loadu_si128(data),
         _mm_loadu_si128(data.offset(1)),
@@ -488,7 +495,7 @@ unsafe fn of1024_impl(cv: &mut X8) {
 pub mod aes {
     use super::*;
     #[target_feature(enable = "sse2", enable = "ssse3", enable = "aes")]
-    pub unsafe fn tf512(cv: &mut X4, data: *const __m128i) {
+    pub unsafe fn tf512(cv: &mut X4, data: *const u8) {
         tf512_impl(cv, data)
     }
     #[target_feature(enable = "sse2", enable = "ssse3", enable = "aes")]
@@ -500,7 +507,7 @@ pub mod aes {
         init512_impl(cv)
     }
     #[target_feature(enable = "sse2", enable = "ssse3", enable = "aes")]
-    pub unsafe fn tf1024(cv: &mut X8, data: *const __m128i) {
+    pub unsafe fn tf1024(cv: &mut X8, data: *const u8) {
         tf1024_impl(cv, data)
     }
     #[target_feature(enable = "sse2", enable = "ssse3", enable = "aes")]
@@ -518,7 +525,7 @@ pub mod aes {
 pub mod ssse3 {
     use super::*;
     #[target_feature(enable = "sse2", enable = "ssse3")]
-    pub unsafe fn tf512(cv: &mut X4, data: *const __m128i) {
+    pub unsafe fn tf512(cv: &mut X4, data: *const u8) {
         tf512_impl(cv, data)
     }
     #[target_feature(enable = "sse2", enable = "ssse3")]
@@ -526,7 +533,7 @@ pub mod ssse3 {
         of512_impl(cv)
     }
     #[target_feature(enable = "sse2", enable = "ssse3")]
-    pub unsafe fn tf1024(cv: &mut X8, data: *const __m128i) {
+    pub unsafe fn tf1024(cv: &mut X8, data: *const u8) {
         tf1024_impl(cv, data)
     }
     #[target_feature(enable = "sse2", enable = "ssse3")]
@@ -543,7 +550,7 @@ pub use self::aes as ssse3;
 pub mod sse2 {
     use super::*;
     #[target_feature(enable = "sse2")]
-    pub unsafe fn tf512(cv: &mut X4, data: *const __m128i) {
+    pub unsafe fn tf512(cv: &mut X4, data: *const u8) {
         tf512_impl(cv, data)
     }
     #[target_feature(enable = "sse2")]
@@ -555,7 +562,7 @@ pub mod sse2 {
         init512_impl(cv)
     }
     #[target_feature(enable = "sse2")]
-    pub unsafe fn tf1024(cv: &mut X8, data: *const __m128i) {
+    pub unsafe fn tf1024(cv: &mut X8, data: *const u8) {
         tf1024_impl(cv, data)
     }
     #[target_feature(enable = "sse2")]
@@ -576,7 +583,7 @@ pub use self::sse2::*;
 #[cfg(feature = "std")]
 mod autodetect {
     use super::*;
-    type Tf<T> = unsafe fn(cv: &mut T, data: *const __m128i);
+    type Tf<T> = unsafe fn(cv: &mut T, data: *const u8);
     type Of<T> = unsafe fn(cv: &mut T);
     type Init<T> = unsafe fn(cv: T) -> T;
     macro_rules! dispatch {
@@ -600,7 +607,7 @@ mod autodetect {
     #[inline]
     pub fn tf512(cv: &mut X4, data: &GenericArray<u8, U64>) {
         dispatch!(tf512, Tf<X4>);
-        unsafe { IMPL(cv, data.as_ptr() as *const _) }
+        unsafe { IMPL(cv, data.as_ptr()) }
     }
     #[inline]
     pub fn of512(cv: &mut X4) {
@@ -615,7 +622,7 @@ mod autodetect {
     #[inline]
     pub fn tf1024(cv: &mut X8, data: &GenericArray<u8, U128>) {
         dispatch!(tf1024, Tf<X8>);
-        unsafe { IMPL(cv, data.as_ptr() as *const _) }
+        unsafe { IMPL(cv, data.as_ptr()) }
     }
     #[inline]
     pub fn of1024(cv: &mut X8) {
@@ -661,7 +668,7 @@ mod test {
                     _mm_and_si128(_mm_and_si128(e.0, e.1), _mm_and_si128(e.2, e.3)),
                     _mm_and_si128(_mm_and_si128(e.4, e.5), _mm_and_si128(e.6, e.7)),
                 );
-                _mm_extract_epi64(e, 0) & _mm_extract_epi64(e, 1) == 0xffffffffffffffffu64 as i64
+                _mm_extract_epi64(e, 0) & _mm_extract_epi64(e, 1) == 0xffff_ffff_ffff_ffffu64 as i64
             }
         }
     }
@@ -681,14 +688,14 @@ mod test {
             );
             assert_eq!(x, transpose_inv(transpose(x)));
             let y = X8(
-                _mm_set_epi64x(0x0306090c0f020508, 0x0b0e0104070a0d00),
-                _mm_set_epi64x(0x04070a0d00030609, 0x0c0f0205080b0e01),
-                _mm_set_epi64x(0x05080b0e0104070a, 0x0d000306090c0f02),
-                _mm_set_epi64x(0x06090c0f0205080b, 0x0e0104070a0d0003),
-                _mm_set_epi64x(0x070a0d000306090c, 0x0f0205080b0e0104),
-                _mm_set_epi64x(0x080b0e0104070a0d, 0x000306090c0f0205),
-                _mm_set_epi64x(0x090c0f0205080b0e, 0x0104070a0d000306),
-                _mm_set_epi64x(0x0e0104070a0d0003, 0x06090c0f0205080b),
+                _mm_set_epi64x(0x0306_090c_0f02_0508, 0x0b0e_0104_070a_0d00),
+                _mm_set_epi64x(0x0407_0a0d_0003_0609, 0x0c0f_0205_080b_0e01),
+                _mm_set_epi64x(0x0508_0b0e_0104_070a, 0x0d00_0306_090c_0f02),
+                _mm_set_epi64x(0x0609_0c0f_0205_080b, 0x0e01_0407_0a0d_0003),
+                _mm_set_epi64x(0x070a_0d00_0306_090c, 0x0f02_0508_0b0e_0104),
+                _mm_set_epi64x(0x080b_0e01_0407_0a0d, 0x0003_0609_0c0f_0205),
+                _mm_set_epi64x(0x090c_0f02_0508_0b0e, 0x0104_070a_0d00_0306),
+                _mm_set_epi64x(0x0e01_0407_0a0d_0003, 0x0609_0c0f_0205_080b),
             );
             assert_eq!(y, transpose_inv(transpose(y)));
         }

@@ -115,7 +115,7 @@ impl<X> core::fmt::Debug for State<X> {
 }
 
 const VERSION: u64 = 1;
-const ID_STRING_LE: u64 = 0x33414853;
+const ID_STRING_LE: u64 = 0x3341_4853;
 const SCHEMA_VER: u64 = (VERSION << 32) | ID_STRING_LE;
 const CFG_TREE_INFO_SEQUENTIAL: u64 = 0;
 const T1_FLAG_FIRST: u64 = 1 << 62;
@@ -253,9 +253,9 @@ macro_rules! define_hasher {
     };
 }
 
-#[cfg_attr(rustfmt, skip)]
+#[rustfmt::skip]
 define_hasher!(Skein256, Threefish256, U32, 256);
-#[cfg_attr(rustfmt, skip)]
+#[rustfmt::skip]
 define_hasher!(Skein512, Threefish512, U64, 512);
-#[cfg_attr(rustfmt, skip)]
+#[rustfmt::skip]
 define_hasher!(Skein1024, Threefish1024, U128, 1024);

@@ -79,16 +79,16 @@ mod sse2 {
         #[inline(always)]
         pub fn swap16(self) -> Self {
             u128x1(unsafe {
-                _mm_shufflehi_epi16(_mm_shufflelo_epi16(self.0, 0b10110001), 0b10110001)
+                _mm_shufflehi_epi16(_mm_shufflelo_epi16(self.0, 0b1011_0001), 0b1011_0001)
             })
         }
         #[inline(always)]
         pub fn swap32(self) -> Self {
-            u128x1(unsafe { _mm_shuffle_epi32(self.0, 0b10110001) })
+            u128x1(unsafe { _mm_shuffle_epi32(self.0, 0b1011_0001) })
         }
         #[inline(always)]
         pub fn swap64(self) -> Self {
-            u128x1(unsafe { _mm_shuffle_epi32(self.0, 0b01001110) })
+            u128x1(unsafe { _mm_shuffle_epi32(self.0, 0b0100_1110) })
         }
     }
     impl BitXor for u128x1 {
@@ -131,12 +131,16 @@ mod sse2 {
         #[inline(always)]
         pub fn from_slice_unaligned(xs: &[u32]) -> Self {
             assert_eq!(xs.len(), 4);
+            #[allow(clippy::cast_ptr_alignment)]
             u32x4(unsafe { _mm_loadu_si128(xs.as_ptr() as *const _) })
         }
         #[inline(always)]
         pub fn write_to_slice_unaligned(self, xs: &mut [u32]) {
             assert_eq!(xs.len(), 4);
-            unsafe { _mm_storeu_si128(xs.as_mut_ptr() as *mut _, self.0) };
+            #[allow(clippy::cast_ptr_alignment)]
+            unsafe {
+                _mm_storeu_si128(xs.as_mut_ptr() as *mut _, self.0)
+            };
         }
         #[inline(always)]
         pub fn splat(x: u32) -> Self {
@@ -214,9 +218,9 @@ mod sse2 {
             debug_assert_eq!(i & !3, 0);
             u32x4(unsafe {
                 match i & 3 {
-                    1 => _mm_shuffle_epi32(self.0, 0b10010011),
-                    2 => _mm_shuffle_epi32(self.0, 0b01001110),
-                    3 => _mm_shuffle_epi32(self.0, 0b00111001),
+                    1 => _mm_shuffle_epi32(self.0, 0b1001_0011),
+                    2 => _mm_shuffle_epi32(self.0, 0b0100_1110),
+                    3 => _mm_shuffle_epi32(self.0, 0b0011_1001),
                     0 => self.0,
                     _ => unreachable!(),
                 }
@@ -386,6 +390,7 @@ mod sse2 {
         pub fn from_slice_unaligned(xs: &[u64]) -> Self {
             assert_eq!(xs.len(), 4);
             unsafe {
+                #[allow(clippy::cast_ptr_alignment)]
                 u64x4(
                     _mm_loadu_si128(xs.as_ptr() as *const __m128i),
                     _mm_loadu_si128((xs.as_ptr() as *const __m128i).offset(1)),
@@ -393,6 +398,7 @@ mod sse2 {
             }
         }
         #[inline(always)]
+        #[allow(clippy::cast_ptr_alignment)]
         pub fn write_to_slice_unaligned(self, xs: &mut [u64]) {
             assert_eq!(xs.len(), 4);
             unsafe { _mm_storeu_si128(xs.as_mut_ptr() as *mut __m128i, self.0) };
@@ -492,14 +498,14 @@ mod sse2 {
                 };
             }
             unsafe {
-                let k16 = _mm_set_epi64x(0x09080f0e0d0c0b0a, 0x0100070605040302);
+                let k16 = _mm_set_epi64x(0x0908_0f0e_0d0c_0b0a, 0x0100_0706_0504_0302);
                 match i {
                     11 => rotr!(11),
                     16 => u64x4(_mm_shuffle_epi8(self.0, k16), _mm_shuffle_epi8(self.1, k16)),
                     25 => rotr!(25),
                     32 => u64x4(
-                        _mm_shuffle_epi32(self.0, 0b10110001),
-                        _mm_shuffle_epi32(self.1, 0b10110001),
+                        _mm_shuffle_epi32(self.0, 0b1011_0001),
+                        _mm_shuffle_epi32(self.1, 0b1011_0001),
                     ),
                     _ => unimplemented!("TODO: complete table..."),
                 }
@@ -557,8 +563,8 @@ mod single_channel {
         #[inline(always)]
         fn not(self) -> Self::Output {
             u128x2(
-                self.0 ^ u128x1::new(0xffffffffffffffffffffffffffffffff),
-                self.1 ^ u128x1::new(0xffffffffffffffffffffffffffffffff),
+                self.0 ^ u128x1::new((-1i128) as u128),
+                self.1 ^ u128x1::new((-1i128) as u128),
             )
         }
     }

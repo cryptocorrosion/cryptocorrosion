@@ -229,7 +229,7 @@ impl ChaCha {
     #[inline(always)]
     fn refill_wide_impl(&mut self, drounds: u32, words: &mut [u32; BUFWORDS]) {
         use crate::wide::*;
-        let k = u32x4::new(0x61707865, 0x3320646e, 0x79622d32, 0x6b206574);
+        let k = u32x4::new(0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574);
         let blockct1 = (u64::from(self.d.extract(0)) | (u64::from(self.d.extract(1)) << 32)) + 1;
         let d1 = self
             .d
@@ -300,7 +300,7 @@ impl ChaCha {
     #[inline(always)]
     fn refill_narrow_impl(&mut self, drounds: u32, words: &mut [u32; BLOCKWORDS]) {
         use crate::narrow::*;
-        let k = u32x4::new(0x61707865, 0x3320646e, 0x79622d32, 0x6b206574);
+        let k = u32x4::new(0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574);
         let mut x = X4 {
             a: k,
             b: self.b,
@@ -510,7 +510,7 @@ impl<Rounds: Unsigned + Default> NewStreamCipher for ChaChaAny<U24, Rounds, X> {
         nonce: &GenericArray<u8, Self::NonceSize>,
     ) -> Self {
         use crate::narrow::*;
-        let k = u32x4::new(0x61707865, 0x3320646e, 0x79622d32, 0x6b206574);
+        let k = u32x4::new(0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574);
         let key0 = u32x4::new(
             LE::read_u32(&key[0..4]),
             LE::read_u32(&key[4..8]),

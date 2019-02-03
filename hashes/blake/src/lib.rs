@@ -234,20 +234,20 @@ use consts::{
 };
 use digest::generic_array::typenum::{U128, U28, U32, U48, U64};
 
-#[cfg_attr(rustfmt, rustfmt_skip)]
+#[rustfmt::skip]
 define_compressor!(Compressor256, u32, U64, BE::read_u32, BE::write_u32, BLAKE256_U, 14, 16, 12, 8, 7, u32x4);
 
-#[cfg_attr(rustfmt, rustfmt_skip)]
+#[rustfmt::skip]
 define_hasher!(Blake224, u32, 64, U64, 224, U28, BE::write_u32, Compressor256, BLAKE224_IV);
 
-#[cfg_attr(rustfmt, rustfmt_skip)]
+#[rustfmt::skip]
 define_hasher!(Blake256, u32, 64, U64, 256, U32, BE::write_u32, Compressor256, BLAKE256_IV);
 
-#[cfg_attr(rustfmt, rustfmt_skip)]
+#[rustfmt::skip]
 define_compressor!(Compressor512, u64, U128, BE::read_u64, BE::write_u64, BLAKE512_U, 16, 32, 25, 16, 11, u64x4);
 
-#[cfg_attr(rustfmt, rustfmt_skip)]
+#[rustfmt::skip]
 define_hasher!(Blake384, u64, 128, U128, 384, U48, BE::write_u64, Compressor512, BLAKE384_IV);
 
-#[cfg_attr(rustfmt, rustfmt_skip)]
+#[rustfmt::skip]
 define_hasher!(Blake512, u64, 128, U128, 512, U64, BE::write_u64, Compressor512, BLAKE512_IV);

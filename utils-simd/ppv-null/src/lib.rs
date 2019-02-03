@@ -35,27 +35,27 @@ macro_rules! define_vec1 {
             }
             #[inline(always)]
             pub fn swap1(self) -> Self {
-                self.swap(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, 1)
+                self.swap(0xaaaa_aaaa_aaaa_aaaa_aaaa_aaaa_aaaa_aaaa, 1)
             }
             #[inline(always)]
             pub fn swap2(self) -> Self {
-                self.swap(0xcccccccccccccccccccccccccccccccc, 2)
+                self.swap(0xcccc_cccc_cccc_cccc_cccc_cccc_cccc_cccc, 2)
             }
             #[inline(always)]
             pub fn swap4(self) -> Self {
-                self.swap(0xf0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0, 4)
+                self.swap(0xf0f0_f0f0_f0f0_f0f0_f0f0_f0f0_f0f0_f0f0, 4)
             }
             #[inline(always)]
             pub fn swap8(self) -> Self {
-                self.swap(0xff00ff00ff00ff00ff00ff00ff00ff00, 8)
+                self.swap(0xff00_ff00_ff00_ff00_ff00_ff00_ff00_ff00, 8)
             }
             #[inline(always)]
             pub fn swap16(self) -> Self {
-                self.swap(0xffff0000ffff0000ffff0000ffff0000, 16)
+                self.swap(0xffff_0000_ffff_0000_ffff_0000_ffff_0000, 16)
             }
             #[inline(always)]
             pub fn swap32(self) -> Self {
-                self.swap(0xffffffff00000000ffffffff00000000, 32)
+                self.swap(0xffff_ffff_0000_0000_ffff_ffff_0000_0000, 32)
             }
             #[inline(always)]
             pub fn swap64(self) -> Self {

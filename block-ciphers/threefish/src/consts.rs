@@ -1,5 +1,5 @@
 // Magic constant for key schedule
-pub const C240: u64 = 0x1BD11BDAA9FC1A22;
+pub const C240: u64 = 0x1BD1_1BDA_A9FC_1A22;
 
 // Rotation constants for the different key lengths
 pub const R_256: [[u32; 2]; 8] = [
