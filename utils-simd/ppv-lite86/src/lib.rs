@@ -1,6 +1,6 @@
 #![no_std]
 
-use core::ops::{AddAssign, BitAnd, BitOr, BitXor, BitXorAssign, Not};
+use core::ops::{Add, AddAssign, BitAnd, BitOr, BitXor, BitXorAssign, Not};
 use crypto_simd::*;
 
 //#[cfg(all(feature = "simd", target_feature = "sse2"))]
@@ -142,6 +142,30 @@ mod sse2 {
         pub fn splat(x: u32) -> Self {
             u32x4(unsafe { _mm_set1_epi32(x as i32) })
         }
+        #[inline(always)]
+        pub fn extract(self, i: u32) -> u32 {
+            unsafe {
+                match i {
+                    0 => _mm_extract_epi32(self.0, 0) as u32,
+                    1 => _mm_extract_epi32(self.0, 1) as u32,
+                    2 => _mm_extract_epi32(self.0, 2) as u32,
+                    3 => _mm_extract_epi32(self.0, 3) as u32,
+                    _ => unreachable!(),
+                }
+            }
+        }
+        #[inline(always)]
+        pub fn replace(self, i: usize, v: u32) -> Self {
+            u32x4(unsafe {
+                match i {
+                    0 => _mm_insert_epi32(self.0, v as i32, 0),
+                    1 => _mm_insert_epi32(self.0, v as i32, 1),
+                    2 => _mm_insert_epi32(self.0, v as i32, 2),
+                    3 => _mm_insert_epi32(self.0, v as i32, 3),
+                    _ => unreachable!(),
+                }
+            })
+        }
     }
     impl BitXor for u32x4 {
         type Output = u32x4;
@@ -170,12 +194,17 @@ mod sse2 {
             *self = *self ^ rhs;
         }
     }
+    impl Add for u32x4 {
+        type Output = Self;
+        #[inline(always)]
+        fn add(self, rhs: Self) -> Self::Output {
+            unsafe { u32x4(_mm_add_epi32(self.0, rhs.0)) }
+        }
+    }
     impl AddAssign for u32x4 {
         #[inline(always)]
         fn add_assign(&mut self, rhs: Self) {
-            unsafe {
-                self.0 = _mm_add_epi32(self.0, rhs.0);
-            }
+            *self = *self + rhs
         }
     }
     impl RotateWordsRight for u32x4 {
@@ -218,9 +247,124 @@ mod sse2 {
                         self.0,
                         _mm_set_epi64x(0x0d0c0f0e_09080b0a, 0x05040706_01000302),
                     ),
+                    20 => rotr!(20),
+                    24 => _mm_shuffle_epi8(
+                        self.0,
+                        _mm_set_epi64x(0x0e0d0c0f_0a09080b, 0x06050407_02010003),
+                    ),
+                    25 => rotr!(25),
                     _ => unimplemented!("TODO: complete table..."),
                 }
             })
+        }
+    }
+
+    // TODO: avx2 version
+    #[allow(non_camel_case_types)]
+    #[derive(Copy, Clone)]
+    pub struct u32x4x4(u32x4, u32x4, u32x4, u32x4);
+    impl u32x4x4 {
+        #[inline(always)]
+        pub fn from((a, b, c, d): (u32x4, u32x4, u32x4, u32x4)) -> Self {
+            u32x4x4(a, b, c, d)
+        }
+        #[inline(always)]
+        pub fn splat(a: u32x4) -> Self {
+            u32x4x4(a, a, a, a)
+        }
+        #[inline(always)]
+        pub fn into_parts(self) -> (u32x4, u32x4, u32x4, u32x4) {
+            (self.0, self.1, self.2, self.3)
+        }
+    }
+    impl BitXor for u32x4x4 {
+        type Output = u32x4x4;
+        #[inline(always)]
+        fn bitxor(self, rhs: Self) -> Self::Output {
+            u32x4x4(
+                self.0 ^ rhs.0,
+                self.1 ^ rhs.1,
+                self.2 ^ rhs.2,
+                self.3 ^ rhs.3,
+            )
+        }
+    }
+    impl BitOr for u32x4x4 {
+        type Output = Self;
+        #[inline(always)]
+        fn bitor(self, rhs: Self) -> Self::Output {
+            u32x4x4(
+                self.0 | rhs.0,
+                self.1 | rhs.1,
+                self.2 | rhs.2,
+                self.3 | rhs.3,
+            )
+        }
+    }
+    impl BitAnd for u32x4x4 {
+        type Output = Self;
+        #[inline(always)]
+        fn bitand(self, rhs: Self) -> Self::Output {
+            u32x4x4(
+                self.0 & rhs.0,
+                self.1 & rhs.1,
+                self.2 & rhs.2,
+                self.3 & rhs.3,
+            )
+        }
+    }
+    impl BitXorAssign for u32x4x4 {
+        #[inline(always)]
+        fn bitxor_assign(&mut self, rhs: Self) {
+            self.0 = self.0 ^ rhs.0;
+            self.1 = self.1 ^ rhs.1;
+            self.2 = self.2 ^ rhs.2;
+            self.3 = self.3 ^ rhs.3;
+        }
+    }
+    impl Add for u32x4x4 {
+        type Output = Self;
+        #[inline(always)]
+        fn add(self, rhs: Self) -> Self::Output {
+            u32x4x4(
+                self.0 + rhs.0,
+                self.1 + rhs.1,
+                self.0 + rhs.0,
+                self.1 + rhs.1,
+            )
+        }
+    }
+    impl AddAssign for u32x4x4 {
+        #[inline(always)]
+        fn add_assign(&mut self, rhs: Self) {
+            self.0 = self.0 + rhs.0;
+            self.1 = self.1 + rhs.1;
+            self.2 = self.2 + rhs.2;
+            self.3 = self.3 + rhs.3;
+        }
+    }
+    impl RotateWordsRight for u32x4x4 {
+        type Output = Self;
+        #[inline(always)]
+        fn rotate_words_right(self, i: u32) -> Self::Output {
+            u32x4x4(
+                self.0.rotate_words_right(i),
+                self.1.rotate_words_right(i),
+                self.2.rotate_words_right(i),
+                self.3.rotate_words_right(i),
+            )
+        }
+    }
+    impl SplatRotateRight for u32x4x4 {
+        type Output = Self;
+        #[inline(always)]
+        fn splat_rotate_right(self, i: u32) -> Self::Output {
+            u32x4x4(
+                self.0.splat_rotate_right(i),
+                self.1.splat_rotate_right(i),
+                self.2.splat_rotate_right(i),
+                self.3.splat_rotate_right(i),
+            )
         }
     }
 
@@ -257,6 +401,18 @@ mod sse2 {
         #[inline(always)]
         pub fn splat(x: u64) -> Self {
             unsafe { u64x4(_mm_set1_epi64x(x as i64), _mm_set1_epi64x(x as i64)) }
+        }
+        #[inline(always)]
+        pub fn extract(self, i: u32) -> u64 {
+            unsafe {
+                match i {
+                    0 => _mm_extract_epi64(self.0, 0) as u64,
+                    1 => _mm_extract_epi64(self.0, 1) as u64,
+                    2 => _mm_extract_epi64(self.1, 0) as u64,
+                    3 => _mm_extract_epi64(self.1, 1) as u64,
+                    _ => unreachable!(),
+                }
+            }
         }
     }
     impl BitXor for u64x4 {

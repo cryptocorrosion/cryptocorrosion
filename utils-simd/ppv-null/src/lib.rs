@@ -1,4 +1,4 @@
-use core::ops::{AddAssign, BitAnd, BitOr, BitXor, BitXorAssign, Not};
+use core::ops::{Add, AddAssign, BitAnd, BitOr, BitXor, BitXorAssign, Not};
 use crypto_simd::*;
 
 macro_rules! define_vec1 {
@@ -190,6 +190,22 @@ macro_rules! define_vec2 {
         }
     };
 }
+
+macro_rules! zipmap_impl {
+    ($vec:ident, $word:ident, $trait:ident, $fn:ident, $impl_fn:ident) => {
+        impl $trait for $vec {
+            type Output = Self;
+            #[inline(always)]
+            fn $fn(self, rhs: Self) -> Self::Output {
+                self.zipmap(rhs, $word::$impl_fn)
+            }
+        }
+    };
+    ($vec:ident, $word:ident, $trait:ident, $fn:ident) => {
+        zipmap_impl!($vec, $word, $trait, $fn, $fn);
+    };
+}
+
 macro_rules! define_vec4 {
     ($X4:ident, $word:ident) => {
         #[allow(non_camel_case_types)]
@@ -238,6 +254,17 @@ macro_rules! define_vec4 {
                 xs[2] = self.2;
                 xs[3] = self.3;
             }
+            #[inline(always)]
+            pub fn replace(mut self, i: usize, v: $word) -> Self {
+                let xs = [&mut self.0, &mut self.1, &mut self.2, &mut self.3];
+                *xs[i] = v;
+                self
+            }
+            #[inline(always)]
+            pub fn extract(self, i: usize) -> $word {
+                let xs = [self.0, self.1, self.2, self.3];
+                xs[i]
+            }
         }
         impl AddAssign for $X4 {
             #[inline(always)]
@@ -251,13 +278,10 @@ macro_rules! define_vec4 {
                 *self = self.zipmap(rhs, $word::bitxor);
             }
         }
-        impl BitXor for $X4 {
-            type Output = Self;
-            #[inline(always)]
-            fn bitxor(self, rhs: Self) -> Self::Output {
-                self.zipmap(rhs, $word::bitxor)
-            }
-        }
+        zipmap_impl!($X4, $word, Add, add, wrapping_add);
+        zipmap_impl!($X4, $word, BitXor, bitxor);
+        zipmap_impl!($X4, $word, BitOr, bitor);
+        zipmap_impl!($X4, $word, BitAnd, bitand);
         impl RotateWordsRight for $X4 {
             type Output = Self;
             #[inline(always)]
@@ -292,3 +316,80 @@ define_vec4!(u32x4, u32);
 define_vec4!(u64x4, u64);
 define_vec1!(u128x1, u128);
 define_vec2!(u128x2, u128);
+
+// TODO: macroize this for other types
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone)]
+pub struct u32x4x4(u32x4, u32x4, u32x4, u32x4);
+impl u32x4x4 {
+    #[inline(always)]
+    fn zipmap<F>(self, rhs: Self, mut f: F) -> Self
+    where
+        F: FnMut(u32x4, u32x4) -> u32x4,
+    {
+        u32x4x4(
+            f(self.0, rhs.0),
+            f(self.1, rhs.1),
+            f(self.2, rhs.2),
+            f(self.3, rhs.3),
+        )
+    }
+    #[inline(always)]
+    pub fn from((a, b, c, d): (u32x4, u32x4, u32x4, u32x4)) -> Self {
+        u32x4x4(a, b, c, d)
+    }
+    #[inline(always)]
+    pub fn splat(a: u32x4) -> Self {
+        u32x4x4(a, a, a, a)
+    }
+    #[inline(always)]
+    pub fn into_parts(self) -> (u32x4, u32x4, u32x4, u32x4) {
+        (self.0, self.1, self.2, self.3)
+    }
+}
+zipmap_impl!(u32x4x4, u32x4, BitXor, bitxor);
+zipmap_impl!(u32x4x4, u32x4, BitOr, bitor);
+zipmap_impl!(u32x4x4, u32x4, BitAnd, bitand);
+zipmap_impl!(u32x4x4, u32x4, Add, add);
+impl BitXorAssign for u32x4x4 {
+    #[inline(always)]
+    fn bitxor_assign(&mut self, rhs: Self) {
+        self.0 = self.0 ^ rhs.0;
+        self.1 = self.1 ^ rhs.1;
+        self.2 = self.2 ^ rhs.2;
+        self.3 = self.3 ^ rhs.3;
+    }
+}
+impl AddAssign for u32x4x4 {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: Self) {
+        self.0 = self.0 + rhs.0;
+        self.1 = self.1 + rhs.1;
+        self.2 = self.2 + rhs.2;
+        self.3 = self.3 + rhs.3;
+    }
+}
+impl RotateWordsRight for u32x4x4 {
+    type Output = Self;
+    #[inline(always)]
+    fn rotate_words_right(self, i: u32) -> Self::Output {
+        u32x4x4(
+            self.0.rotate_words_right(i),
+            self.1.rotate_words_right(i),
+            self.2.rotate_words_right(i),
+            self.3.rotate_words_right(i),
+        )
+    }
+}
+impl SplatRotateRight for u32x4x4 {
+    type Output = Self;
+    #[inline(always)]
+    fn splat_rotate_right(self, i: u32) -> Self::Output {
+        u32x4x4(
+            self.0.splat_rotate_right(i),
+            self.1.splat_rotate_right(i),
+            self.2.splat_rotate_right(i),
+            self.3.splat_rotate_right(i),
+        )
+    }
+}

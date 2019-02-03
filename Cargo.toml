@@ -5,12 +5,14 @@ members = [
     "hashes/groestl",
     "hashes/jh",
     "hashes/skein",
+    "stream-ciphers/chacha",
     "utils-simd/crypto-simd",
     "utils-simd/ppv-lite86",
     "utils-simd/ppv-null",
 ]
 
 [patch.crates-io]
+c2-chacha = { path = "stream-ciphers/chacha" }
 crypto-simd = { path = "utils-simd/crypto-simd" }
 ppv-lite86 = { path = "utils-simd/ppv-lite86" }
 ppv-null = { path = "utils-simd/ppv-null" }
