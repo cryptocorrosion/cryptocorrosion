@@ -53,7 +53,7 @@ use packed_simd_crate::u32x4;
 #[cfg(not(any(feature = "simd", feature = "packed_simd")))]
 use ppv_null::{u32x4, u32x4x4};
 #[cfg(all(feature = "simd", not(feature = "packed_simd")))]
-use simd::{u32x4, u32x4x4};
+use simd::Machine;
 
 use byteorder::{ByteOrder, LE};
 use core::{cmp, u32, u64};
@@ -61,73 +61,61 @@ use stream_cipher::generic_array::typenum::{Unsigned, U10, U12, U24, U32, U4, U6
 use stream_cipher::generic_array::{ArrayLength, GenericArray};
 use stream_cipher::{LoopError, NewStreamCipher, SyncStreamCipher, SyncStreamCipherSeek};
 
+use simd::{
+    machine, vec128_storage, ArithOps, BitOps32, LaneWords4, MultiLane, Store, StoreBytes, Vec2,
+    Vec4,
+};
+
 const BLOCK: usize = 64;
 const BLOCK64: u64 = BLOCK as u64;
-const BLOCKWORDS: usize = BLOCK / 4;
 const LOG2_BUFBLOCKS: u64 = 2;
 const BUFBLOCKS: u64 = 1 << LOG2_BUFBLOCKS;
 const BUFSZ64: u64 = BLOCK64 * BUFBLOCKS;
 const BUFSZ: usize = BUFSZ64 as usize;
-const BUFWORDS: usize = (BLOCK64 * BUFBLOCKS / 4) as usize;
 
 const BIG_LEN: u64 = 0;
 const SMALL_LEN: u64 = 1 << 32;
 
-macro_rules! impl_round {
-    ($state:ident, $vec:ident) => {
-        #[derive(Clone)]
-        pub struct $state {
-            pub a: $vec,
-            pub b: $vec,
-            pub c: $vec,
-            pub d: $vec,
-        }
-        #[inline(always)]
-        pub fn round(mut x: $state) -> $state {
-            x.a += x.b;
-            x.d ^= x.a;
-            x.d = x.d.splat_rotate_right(16);
-            x.c += x.d;
-            x.b ^= x.c;
-            x.b = x.b.splat_rotate_right(20);
-            x.a += x.b;
-            x.d ^= x.a;
-            x.d = x.d.splat_rotate_right(24);
-            x.c += x.d;
-            x.b ^= x.c;
-            x.b = x.b.splat_rotate_right(25);
-            x
-        }
-        #[inline(always)]
-        pub fn diagonalize(mut x: $state) -> $state {
-            x.b = x.b.rotate_words_right(3);
-            x.c = x.c.rotate_words_right(2);
-            x.d = x.d.rotate_words_right(1);
-            x
-        }
-        #[inline(always)]
-        pub fn undiagonalize(mut x: $state) -> $state {
-            x.b = x.b.rotate_words_right(1);
-            x.c = x.c.rotate_words_right(2);
-            x.d = x.d.rotate_words_right(3);
-            x
-        }
-    };
+#[derive(Clone)]
+pub struct State<V> {
+    pub a: V,
+    pub b: V,
+    pub c: V,
+    pub d: V,
 }
-
-mod wide {
-    use super::*;
-    use crypto_simd::*;
-    impl_round!(X4, u32x4x4);
+#[inline(always)]
+pub fn round<V: ArithOps + BitOps32>(mut x: State<V>) -> State<V> {
+    x.a += x.b;
+    x.d ^= x.a;
+    x.d = x.d.rotate_each_word_right16();
+    x.c += x.d;
+    x.b ^= x.c;
+    x.b = x.b.rotate_each_word_right20();
+    x.a += x.b;
+    x.d ^= x.a;
+    x.d = x.d.rotate_each_word_right24();
+    x.c += x.d;
+    x.b ^= x.c;
+    x.b = x.b.rotate_each_word_right25();
+    x
 }
-mod narrow {
-    use super::*;
-    use crypto_simd::*;
-    impl_round!(X4, u32x4);
+#[inline(always)]
+pub fn diagonalize<V: LaneWords4>(mut x: State<V>) -> State<V> {
+    x.b = x.b.shuffle_lane_words3012();
+    x.c = x.c.shuffle_lane_words2301();
+    x.d = x.d.shuffle_lane_words1230();
+    x
+}
+#[inline(always)]
+pub fn undiagonalize<V: LaneWords4>(mut x: State<V>) -> State<V> {
+    x.b = x.b.shuffle_lane_words1230();
+    x.c = x.c.shuffle_lane_words2301();
+    x.d = x.d.shuffle_lane_words3012();
+    x
 }
 
 macro_rules! impl_dispatch {
-        ($fn:ident, $fn_impl:ident, $width:expr) => {
+        ($fn:ident, $fn_impl:ident, $width:expr, $ret:ty) => {
     /// Fill a new buffer from the state, autoincrementing internal block count. Caller must count
     /// blocks to ensure this doesn't wrap a 32/64 bit counter, as appropriate.
     #[cfg(not(all(
@@ -135,8 +123,8 @@ macro_rules! impl_dispatch {
         target_arch = "x86_64",
         any(feature = "simd", feature = "packed_simd")
     )))]
-    fn $fn(&mut self, drounds: u32, words: &mut [u32; $width]) {
-        self.$fn_impl(drounds, words);
+    fn $fn(&mut self, drounds: u32, words: &mut [u8; $width]) -> $ret {
+        self.$fn_impl(drounds, words)
     }
 
     /// Fill a new buffer from the state, autoincrementing internal block count. Caller must count
@@ -146,41 +134,32 @@ macro_rules! impl_dispatch {
         target_arch = "x86_64",
         any(feature = "simd", feature = "packed_simd")
     ))]
-    fn $fn(&mut self, drounds: u32, words: &mut [u32; $width]) {
-        type Refill = unsafe fn(state: &mut ChaCha, drounds: u32, words: &mut [u32; $width]);
+    fn $fn(&mut self, drounds: u32, words: &mut [u8; $width]) -> $ret {
+        type Refill = unsafe fn(state: &mut ChaCha, drounds: u32, words: &mut [u8; $width]) -> $ret;
         lazy_static! {
             static ref IMPL: Refill = { dispatch_init() };
         }
         fn dispatch_init() -> Refill {
-            if is_x86_feature_detected!("avx2") {
+            use simd::machine::x86::*;
+            /*if is_x86_feature_detected!("avx2") {
                 // wide issue
                 #[target_feature(enable = "avx2")]
                 unsafe fn refill_avx2(
                     state: &mut ChaCha,
                     drounds: u32,
-                    words: &mut [u32; $width],
+                    words: &mut [u8; $width],
                 ) {
-                    ChaCha::$fn_impl(state, drounds, words);
+                    ChaCha::$fn_impl(state, AVX2, drounds, words);
                 }
                 refill_avx2
-            } else if is_x86_feature_detected!("avx") {
-                #[target_feature(enable = "avx")]
-                unsafe fn refill_avx(
-                    state: &mut ChaCha,
-                    drounds: u32,
-                    words: &mut [u32; $width],
-                ) {
-                    ChaCha::$fn_impl(state, drounds, words);
-                }
-                refill_avx
-            } else if is_x86_feature_detected!("sse4.1") {
+            } else */if is_x86_feature_detected!("sse4.1") {
                 #[target_feature(enable = "sse4.1")]
                 unsafe fn refill_sse4(
                     state: &mut ChaCha,
                     drounds: u32,
-                    words: &mut [u32; $width],
-                ) {
-                    ChaCha::$fn_impl(state, drounds, words);
+                    words: &mut [u8; $width],
+                ) -> $ret {
+                    ChaCha::$fn_impl(state, SSE41, drounds, words)
                 }
                 refill_sse4
             } else if is_x86_feature_detected!("ssse3") {
@@ -189,9 +168,9 @@ macro_rules! impl_dispatch {
                 unsafe fn refill_ssse3(
                     state: &mut ChaCha,
                     drounds: u32,
-                    words: &mut [u32; $width],
-                ) {
-                    ChaCha::$fn_impl(state, drounds, words);
+                    words: &mut [u8; $width],
+                ) -> $ret {
+                    ChaCha::$fn_impl(state, SSSE3, drounds, words)
                 }
                 refill_ssse3
             } else {
@@ -199,9 +178,9 @@ macro_rules! impl_dispatch {
                 unsafe fn refill_fallback(
                     state: &mut ChaCha,
                     drounds: u32,
-                    words: &mut [u32; $width],
-                ) {
-                    ChaCha::$fn_impl(state, drounds, words);
+                    words: &mut [u8; $width],
+                ) -> $ret {
+                    ChaCha::$fn_impl(state, SSE2, drounds, words)
                 }
                 refill_fallback
             }
@@ -214,153 +193,165 @@ impl ChaCha {
     /// Set 32-bit block count, affecting next refill.
     #[inline(always)]
     fn seek32(&mut self, blockct: u32) {
-        self.d = self.d.replace(0, blockct)
+        let m = machine::x86::SSE2;
+        let d: <machine::x86::SSE2 as Machine>::u32x4 = m.unpack(self.d);
+        self.d = d.insert(blockct, 0).pack();
     }
 
     /// Set 64-bit block count, affecting next refill.
     #[inline(always)]
     fn seek64(&mut self, blockct: u64) {
-        self.d = self
-            .d
-            .replace(0, blockct as u32)
-            .replace(1, (blockct >> 32) as u32);
+        let m = machine::x86::SSE2;
+        // x86 is little-endian
+        let d: <machine::x86::SSE2 as Machine>::u64x2 = m.unpack(self.d);
+        self.d = d.insert(blockct, 0).pack();
     }
 
     #[inline(always)]
-    fn refill_wide_impl(&mut self, drounds: u32, words: &mut [u32; BUFWORDS]) {
-        use crate::wide::*;
-        let k = u32x4::new(0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574);
-        let blockct1 = (u64::from(self.d.extract(0)) | (u64::from(self.d.extract(1)) << 32)) + 1;
-        let d1 = self
-            .d
-            .replace(0, blockct1 as u32)
-            .replace(1, (blockct1 >> 32) as u32);
-        let blockct2 = blockct1 + 1;
-        let d2 = d1
-            .replace(0, blockct2 as u32)
-            .replace(1, (blockct2 >> 32) as u32);
-        let d3 = d2 + u32x4::new(1, 0, 0, 0);
-        let mut x = X4 {
-            a: u32x4x4::splat(k),
-            b: u32x4x4::splat(self.b),
-            c: u32x4x4::splat(self.c),
-            d: u32x4x4::from((self.d, d1, d2, d3)),
+    fn refill_wide_impl<M: Machine>(&mut self, m: M, drounds: u32, out: &mut [u8; BUFSZ]) {
+        let k = m.vec([0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574]);
+        // TODO: endian
+        let inc = m.vec([1, 0]);
+        let d0: M::u64x2 = m.unpack(self.d);
+        let d1 = d0 + inc;
+        let d2 = d1 + inc;
+        let d3 = d2 + inc;
+        let b = m.unpack(self.b);
+        let c = m.unpack(self.c);
+        let mut x = State {
+            a: M::u32x4x4::from_lanes([k, k, k, k]),
+            b: M::u32x4x4::from_lanes([b, b, b, b]),
+            c: M::u32x4x4::from_lanes([c, c, c, c]),
+            d: m.unpack(M::u64x2x4::from_lanes([d0, d1, d2, d3]).pack()),
         };
         for _ in 0..drounds {
             x = round(x);
             x = undiagonalize(round(diagonalize(x)));
         }
-
-        let blockct1 = (u64::from(self.d.extract(0)) | (u64::from(self.d.extract(1)) << 32)) + 1;
-        let d1 = self
-            .d
-            .replace(0, blockct1 as u32)
-            .replace(1, (blockct1 >> 32) as u32);
-        let blockct2 = blockct1 + 1;
-        let d2 = d1
-            .replace(0, blockct2 as u32)
-            .replace(1, (blockct2 >> 32) as u32);
-        let blockct3 = blockct1 + 2;
-        let d3 = d1
-            .replace(0, blockct3 as u32)
-            .replace(1, (blockct3 >> 32) as u32);
-
+        let inc = m.vec([1, 0]);
+        let d0: M::u64x2 = m.unpack(self.d);
+        let d1 = d0 + inc;
+        let d2 = d1 + inc;
+        let d3 = d2 + inc;
+        let d4 = d3 + inc;
+        let d1: M::u32x4 = m.unpack(d1.pack());
+        let d2: M::u32x4 = m.unpack(d2.pack());
+        let d3: M::u32x4 = m.unpack(d3.pack());
         let (a, b, c, d) = (
-            x.a.into_parts(),
-            x.b.into_parts(),
-            x.c.into_parts(),
-            x.d.into_parts(),
+            x.a.to_lanes(),
+            x.b.to_lanes(),
+            x.c.to_lanes(),
+            x.d.to_lanes(),
         );
-        (a.0 + k).write_to_slice_unaligned(&mut words[0..4]);
-        (b.0 + self.b).write_to_slice_unaligned(&mut words[4..8]);
-        (c.0 + self.c).write_to_slice_unaligned(&mut words[8..12]);
-        (d.0 + self.d).write_to_slice_unaligned(&mut words[12..16]);
-        (a.1 + k).write_to_slice_unaligned(&mut words[16..20]);
-        (b.1 + self.b).write_to_slice_unaligned(&mut words[20..24]);
-        (c.1 + self.c).write_to_slice_unaligned(&mut words[24..28]);
-        (d.1 + d1).write_to_slice_unaligned(&mut words[28..32]);
-        let ww = &mut words[32..];
-        (a.2 + k).write_to_slice_unaligned(&mut ww[0..4]);
-        (b.2 + self.b).write_to_slice_unaligned(&mut ww[4..8]);
-        (c.2 + self.c).write_to_slice_unaligned(&mut ww[8..12]);
-        (d.2 + d2).write_to_slice_unaligned(&mut ww[12..16]);
-        (a.3 + k).write_to_slice_unaligned(&mut ww[16..20]);
-        (b.3 + self.b).write_to_slice_unaligned(&mut ww[20..24]);
-        (c.3 + self.c).write_to_slice_unaligned(&mut ww[24..28]);
-        (d.3 + d3).write_to_slice_unaligned(&mut ww[28..32]);
-        for w in words.iter_mut() {
-            *w = w.to_le();
+        let sb = m.unpack(self.b);
+        let sc = m.unpack(self.c);
+        let sd = [m.unpack(self.d), d1, d2, d3];
+        self.d = d4.pack();
+        let mut words = out.chunks_exact_mut(16);
+        for ((((&a, &b), &c), &d), &sd) in a.iter().zip(&b).zip(&c).zip(&d).zip(&sd) {
+            (a + k).write_le(words.next().unwrap());
+            (b + sb).write_le(words.next().unwrap());
+            (c + sc).write_le(words.next().unwrap());
+            (d + sd).write_le(words.next().unwrap());
         }
-        let blockct4 = blockct2 + 2;
-        self.d = d3
-            .replace(0, blockct4 as u32)
-            .replace(1, (blockct4 >> 32) as u32);
     }
 
+    /// Single-block, rounds-only; shared by try_apply_keystream for tails shorter than BUFSZ
+    /// and XChaCha's setup step.
     #[inline(always)]
-    fn refill_narrow_impl(&mut self, drounds: u32, words: &mut [u32; BLOCKWORDS]) {
-        use crate::narrow::*;
-        let k = u32x4::new(0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574);
-        let mut x = X4 {
+    fn refill_narrow_rounds_impl<M: Machine>(
+        &mut self,
+        m: M,
+        drounds: u32,
+        _: &mut [u8; 0],
+    ) -> State<vec128_storage> {
+        let k: M::u32x4 = m.vec([0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574]);
+        let mut x = State {
             a: k,
-            b: self.b,
-            c: self.c,
-            d: self.d,
+            b: m.unpack(self.b),
+            c: m.unpack(self.c),
+            d: m.unpack(self.d),
         };
         for _ in 0..drounds {
             x = round(x);
             x = undiagonalize(round(diagonalize(x)));
         }
-        (x.a + k).write_to_slice_unaligned(&mut words[0..4]);
-        (x.b + self.b).write_to_slice_unaligned(&mut words[4..8]);
-        (x.c + self.c).write_to_slice_unaligned(&mut words[8..12]);
-        (x.d + self.d).write_to_slice_unaligned(&mut words[12..16]);
-        for w in words.iter_mut() {
-            *w = w.to_le();
+        State {
+            a: x.a.pack(),
+            b: x.b.pack(),
+            c: x.c.pack(),
+            d: x.d.pack(),
         }
-        let blockct1 = (u64::from(self.d.extract(0)) | (u64::from(self.d.extract(1)) << 32)) + 1;
-        self.d = self
-            .d
-            .replace(0, blockct1 as u32)
-            .replace(1, (blockct1 >> 32) as u32);
     }
 
-    impl_dispatch!(refill_wide, refill_wide_impl, BUFWORDS);
-    impl_dispatch!(refill_narrow, refill_narrow_impl, BLOCKWORDS);
+    /// Produce output from the current state.
+    #[inline(always)]
+    fn output_narrow<M: Machine>(&mut self, m: M, x: State<M::u32x4>, out: &mut [u8; BLOCK]) {
+        let k = m.vec([0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574]);
+        (x.a + k).write_le(&mut out[0..16]);
+        (x.b + m.unpack(self.b)).write_le(&mut out[16..32]);
+        (x.c + m.unpack(self.c)).write_le(&mut out[32..48]);
+        (x.d + m.unpack(self.d)).write_le(&mut out[48..64]);
+    }
+
+    /// Add one to the block counter (no overflow check).
+    #[inline(always)]
+    fn inc_block_ct(&mut self) {
+        let m = machine::x86::SSE2;
+        let d0: <machine::x86::SSE2 as Machine>::u64x2 = m.unpack(self.d);
+        self.d = (d0 + m.vec([1, 0])).pack();
+    }
+
+    impl_dispatch!(refill_wide, refill_wide_impl, BUFSZ, ());
+    impl_dispatch!(
+        refill_narrow_rounds,
+        refill_narrow_rounds_impl,
+        0,
+        State<vec128_storage>
+    );
+
+    /// Refill the buffer from a single-block round, updating the block count.
+    #[inline(always)]
+    fn refill_narrow(&mut self, drounds: u32, out: &mut [u8; BLOCK]) {
+        let x = self.refill_narrow_rounds(drounds, &mut []);
+        let m = machine::x86::SSE2;
+        let x = State {
+            a: m.unpack(x.a),
+            b: m.unpack(x.b),
+            c: m.unpack(x.c),
+            d: m.unpack(x.d),
+        };
+        self.output_narrow(m, x, out);
+        self.inc_block_ct();
+    }
 }
 
 mod chacha_any {
     use super::*;
     #[derive(Clone, Copy)]
     pub union Block {
-        pub words: [u32; BLOCKWORDS],
         pub bytes: [u8; BLOCK],
     }
     impl Default for Block {
         fn default() -> Self {
-            Block {
-                words: [0; BLOCKWORDS],
-            }
+            Block { bytes: [0; BLOCK] }
         }
     }
     #[derive(Clone, Copy)]
     pub union WordBytes {
-        pub words: [u32; BUFWORDS],
         pub bytes: [u8; BUFSZ],
     }
     impl Default for WordBytes {
         fn default() -> Self {
-            WordBytes {
-                words: [0; BUFWORDS],
-            }
+            WordBytes { bytes: [0; BUFSZ] }
         }
     }
 
     #[derive(Clone)]
     pub struct ChaCha {
-        pub b: u32x4,
-        pub c: u32x4,
-        pub d: u32x4,
+        pub b: vec128_storage,
+        pub c: vec128_storage,
+        pub d: vec128_storage,
     }
 
     #[derive(Clone)]
@@ -411,7 +402,7 @@ impl Buffer {
         // operation.
         if self.have < 0 {
             self.state
-                .refill_narrow(drounds, unsafe { &mut self.out.words });
+                .refill_narrow(drounds, unsafe { &mut self.out.bytes });
             self.have += BLOCK as i8;
             // checked in seek()
             self.len -= 1;
@@ -443,7 +434,7 @@ impl Buffer {
             let (d0, d1) = data.split_at_mut(data.len() & !(BUFSZ - 1));
             for dd in d0.chunks_exact_mut(BUFSZ) {
                 let mut buf = WordBytes::default();
-                self.state.refill_wide(drounds, unsafe { &mut buf.words });
+                self.state.refill_wide(drounds, unsafe { &mut buf.bytes });
                 for (data_b, key_b) in dd.iter_mut().zip(unsafe { buf.bytes.iter() }) {
                     *data_b ^= *key_b;
                 }
@@ -453,7 +444,7 @@ impl Buffer {
         // Handle the tail a block at a time so we'll have storage for any leftovers.
         for dd in data.chunks_mut(BLOCK) {
             self.state
-                .refill_narrow(drounds, unsafe { &mut self.out.words });
+                .refill_narrow(drounds, unsafe { &mut self.out.bytes });
             for (data_b, key_b) in dd.iter_mut().zip(unsafe { self.out.bytes.iter() }) {
                 *data_b ^= *key_b;
             }
@@ -484,7 +475,8 @@ where
         key: &GenericArray<u8, Self::KeySize>,
         nonce: &GenericArray<u8, Self::NonceSize>,
     ) -> Self {
-        let ctr_nonce = u32x4::new(
+        let m = machine::x86::SSE2;
+        let ctr_nonce = m.vec([
             0,
             if NonceSize::U32 == 12 {
                 LE::read_u32(&nonce[0..4])
@@ -493,19 +485,19 @@ where
             },
             LE::read_u32(&nonce[NonceSize::USIZE - 8..NonceSize::USIZE - 4]),
             LE::read_u32(&nonce[NonceSize::USIZE - 4..NonceSize::USIZE]),
-        );
-        let key0 = u32x4::new(
+        ]);
+        let key0 = m.vec([
             LE::read_u32(&key[0..4]),
             LE::read_u32(&key[4..8]),
             LE::read_u32(&key[8..12]),
             LE::read_u32(&key[12..16]),
-        );
-        let key1 = u32x4::new(
+        ]);
+        let key1 = m.vec([
             LE::read_u32(&key[16..20]),
             LE::read_u32(&key[20..24]),
             LE::read_u32(&key[24..28]),
             LE::read_u32(&key[28..32]),
-        );
+        ]);
         let state = ChaCha {
             b: key0,
             c: key1,
@@ -537,47 +529,40 @@ impl<Rounds: Unsigned + Default> NewStreamCipher for ChaChaAny<U24, Rounds, X> {
         key: &GenericArray<u8, Self::KeySize>,
         nonce: &GenericArray<u8, Self::NonceSize>,
     ) -> Self {
-        use crate::narrow::*;
-        let k = u32x4::new(0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574);
-        let key0 = u32x4::new(
+        let m = machine::x86::SSE2;
+        let key0 = m.vec([
             LE::read_u32(&key[0..4]),
             LE::read_u32(&key[4..8]),
             LE::read_u32(&key[8..12]),
             LE::read_u32(&key[12..16]),
-        );
-        let key1 = u32x4::new(
+        ]);
+        let key1 = m.vec([
             LE::read_u32(&key[16..20]),
             LE::read_u32(&key[20..24]),
             LE::read_u32(&key[24..28]),
             LE::read_u32(&key[28..32]),
-        );
-        let nonce0 = u32x4::new(
+        ]);
+        let nonce0 = m.vec([
             LE::read_u32(&nonce[0..4]),
             LE::read_u32(&nonce[4..8]),
             LE::read_u32(&nonce[8..12]),
             LE::read_u32(&nonce[12..16]),
-        );
-        let ctr_nonce1 = u32x4::new(
-            0,
-            0,
-            LE::read_u32(&nonce[16..20]),
-            LE::read_u32(&nonce[20..24]),
-        );
-        let mut x = X4 {
-            a: k,
+        ]);
+        let mut state = ChaCha {
             b: key0,
             c: key1,
             d: nonce0,
         };
-        for _ in 0..Rounds::U32 {
-            x = round(x);
-            x = undiagonalize(round(diagonalize(x)));
-        }
-        let state = ChaCha {
-            b: x.a,
-            c: x.d,
-            d: ctr_nonce1,
-        };
+        let x = state.refill_narrow_rounds(Rounds::U32, &mut [0; 0]);
+        let ctr_nonce1 = m.vec([
+            0,
+            0,
+            LE::read_u32(&nonce[16..20]),
+            LE::read_u32(&nonce[20..24]),
+        ]);
+        state.b = x.a;
+        state.c = x.d;
+        state.d = ctr_nonce1;
         ChaChaAny {
             state: Buffer {
                 state,

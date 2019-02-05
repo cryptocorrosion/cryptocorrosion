@@ -38,22 +38,22 @@ pub const BLAKE512_U: [u64; 16] = [
     0xba7c_9045_f12c_7f99, 0x24a1_9947_b391_6cf7, 0x0801_f2e2_858e_fc16, 0x6369_20d8_7157_4e69
 ];
 
-pub const BLAKE224_IV: [u32; 8] = [
-    0xc105_9ed8, 0x367c_d507, 0x3070_dd17, 0xf70e_5939,
-    0xffc0_0b31, 0x6858_1511, 0x64f9_8fa7, 0xbefa_4fa4
+pub const BLAKE224_IV: [[u32; 4]; 2] = [
+    [0xc105_9ed8, 0x367c_d507, 0x3070_dd17, 0xf70e_5939],
+    [0xffc0_0b31, 0x6858_1511, 0x64f9_8fa7, 0xbefa_4fa4]
 ];
 
-pub const BLAKE256_IV: [u32; 8] = [
-    0x6a09_e667, 0xbb67_ae85, 0x3c6e_f372, 0xa54f_f53a,
-    0x510e_527f, 0x9b05_688c, 0x1f83_d9ab, 0x5be0_cd19
+pub const BLAKE256_IV: [[u32; 4]; 2] = [
+    [0x6a09_e667, 0xbb67_ae85, 0x3c6e_f372, 0xa54f_f53a],
+    [0x510e_527f, 0x9b05_688c, 0x1f83_d9ab, 0x5be0_cd19]
 ];
 
-pub const BLAKE384_IV: [u64; 8] = [
-    0xcbbb_9d5d_c105_9ed8, 0x629a_292a_367c_d507, 0x9159_015a_3070_dd17, 0x152f_ecd8_f70e_5939,
-    0x6733_2667_ffc0_0b31, 0x8eb4_4a87_6858_1511, 0xdb0c_2e0d_64f9_8fa7, 0x47b5_481d_befa_4fa4
+pub const BLAKE384_IV: [[u64; 4]; 2] = [
+    [0xcbbb_9d5d_c105_9ed8, 0x629a_292a_367c_d507, 0x9159_015a_3070_dd17, 0x152f_ecd8_f70e_5939],
+    [0x6733_2667_ffc0_0b31, 0x8eb4_4a87_6858_1511, 0xdb0c_2e0d_64f9_8fa7, 0x47b5_481d_befa_4fa4]
 ];
 
-pub const BLAKE512_IV: [u64; 8] = [
-    0x6a09_e667_f3bc_c908, 0xbb67_ae85_84ca_a73b, 0x3c6e_f372_fe94_f82b, 0xa54f_f53a_5f1d_36f1,
-    0x510e_527f_ade6_82d1, 0x9b05_688c_2b3e_6c1f, 0x1f83_d9ab_fb41_bd6b, 0x5be0_cd19_137e_2179
+pub const BLAKE512_IV: [[u64; 4]; 2] = [
+    [0x6a09_e667_f3bc_c908, 0xbb67_ae85_84ca_a73b, 0x3c6e_f372_fe94_f82b, 0xa54f_f53a_5f1d_36f1],
+    [0x510e_527f_ade6_82d1, 0x9b05_688c_2b3e_6c1f, 0x1f83_d9ab_fb41_bd6b, 0x5be0_cd19_137e_2179]
 ];

@@ -1,6 +1,6 @@
 // copyright 2017 Kaz Wesley
 
-//! Classic Blake in a Rustic setting
+//! BLAKE, the SHA-3 hash finalist based on the ChaCha cipher
 
 #![no_std]
 
@@ -27,49 +27,51 @@ pub use digest::Digest;
 use packed_simd_crate::{u32x4, u64x4};
 #[cfg(not(any(feature = "simd", feature = "packed_simd")))]
 use ppv_null::{u32x4, u64x4};
-#[cfg(all(feature = "simd", not(feature = "packed_simd")))]
-use simd::{u32x4, u64x4};
+
+use simd::crypto_simd_new::{RotateEachWord32, RotateEachWord64};
+use simd::machine::x86::SSE2;
+use simd::{vec128_storage, vec256_storage, IntoVec, Machine, Store, Words4};
 
 macro_rules! define_compressor {
-    ($compressor:ident, $word:ident, $Bufsz:ty, $deserializer:path, $serializer:path, $uval:expr,
-     $rounds:expr, $shift0:expr, $shift1:expr, $shift2: expr, $shift3: expr, $X4:ident) => {
-        #[derive(Debug, Clone, Copy)]
+    ($compressor:ident, $storage:ident, $word:ident, $Bufsz:ty, $deserializer:path, $serializer:path, $uval:expr,
+     $rounds:expr, $shift0:ident, $shift1:ident, $shift2: ident, $shift3: ident, $X4:ident) => {
+        #[derive(Clone, Copy)]
         struct $compressor {
-            h: [$word; 8],
+            h: [$storage; 2],
         }
 
         impl $compressor {
-            fn put_block(&mut self, block: &GenericArray<u8, $Bufsz>, t: ($word, $word)) {
+            fn put_block_impl<M: Machine>(&mut self, mach: M, block: &GenericArray<u8, $Bufsz>, t: ($word, $word)) {
                 const U: [$word; 16] = $uval;
 
                 #[inline(always)]
-                fn round((mut a, mut b, mut c, mut d): ($X4, $X4, $X4, $X4), m0: $X4, m1: $X4) -> ($X4, $X4, $X4, $X4)
+                fn round<M: Machine>((mut a, mut b, mut c, mut d): (M::$X4, M::$X4, M::$X4, M::$X4), m0: M::$X4, m1: M::$X4) -> (M::$X4, M::$X4, M::$X4, M::$X4)
                 {
                     a += m0;
                     a += b;
                     d ^= a;
-                    d = d.splat_rotate_right($shift0);
+                    d = d.$shift0();
                     c += d;
                     b ^= c;
-                    b = b.splat_rotate_right($shift1);
+                    b = b.$shift1();
                     a += m1;
                     a += b;
                     d ^= a;
-                    d = d.splat_rotate_right($shift2);
+                    d = d.$shift2();
                     c += d;
                     b ^= c;
-                    b = b.splat_rotate_right($shift3);
+                    b = b.$shift3();
                     (a, b, c, d)
                 }
 
                 #[inline(always)]
-                fn diagonalize((a, b, c, d): ($X4, $X4, $X4, $X4)) -> ($X4, $X4, $X4, $X4) {
-                    (a, b.rotate_words_right(3), c.rotate_words_right(2), d.rotate_words_right(1))
+                fn diagonalize<M: Machine>((a, b, c, d): (M::$X4, M::$X4, M::$X4, M::$X4)) -> (M::$X4, M::$X4, M::$X4, M::$X4) {
+                    (a, b.shuffle3012(), c.shuffle2301(), d.shuffle1230())
                 }
 
                 #[inline(always)]
-                fn undiagonalize((a, b, c, d): ($X4, $X4, $X4, $X4)) -> ($X4, $X4, $X4, $X4) {
-                    (a, b.rotate_words_right(1), c.rotate_words_right(2), d.rotate_words_right(3))
+                fn undiagonalize<M: Machine>((a, b, c, d): (M::$X4, M::$X4, M::$X4, M::$X4)) -> (M::$X4, M::$X4, M::$X4, M::$X4) {
+                    (a, b.shuffle1230(), c.shuffle2301(), d.shuffle3012())
                 }
 
                 let mut m = [0; 16];
@@ -80,35 +82,48 @@ macro_rules! define_compressor {
                     *mx = $deserializer(b);
                 }
 
-                // TODO: align self.h
-                let mut xs = ($X4::from_slice_unaligned(&self.h[0..4]), $X4::from_slice_unaligned(&self.h[4..8]), $X4::from_slice_unaligned(&U[0..4]), $X4::from_slice_unaligned(&U[4..8]));
-                xs.3 ^= $X4::new(t.0, t.0, t.1, t.1);
+                let u = (mach.vec([U[0], U[1], U[2], U[3]]), mach.vec([U[4], U[5], U[6], U[7]]));
+                let mut xs = unsafe {
+                    (M::$X4::load(&self.h[0]), M::$X4::load(&self.h[1]), u.0, u.1)};
+                xs.3 ^= mach.vec([t.0, t.0, t.1, t.1]);
                 for sigma in &SIGMA[..$rounds] {
                     macro_rules! m0 { ($e:expr) => (m[sigma[$e] as usize] ^ U[sigma[$e + 1] as usize]) }
                     macro_rules! m1 { ($e:expr) => (m[sigma[$e + 1] as usize] ^ U[sigma[$e] as usize]) }
                     // column step
-                    let m0 = $X4::new(m0!(0), m0!(2), m0!(4), m0!(6));
-                    let m1 = $X4::new(m1!(0), m1!(2), m1!(4), m1!(6));
-                    xs = round(xs, m0, m1);
+                    let m0 = mach.vec([m0!(0), m0!(2), m0!(4), m0!(6)]);
+                    let m1 = mach.vec([m1!(0), m1!(2), m1!(4), m1!(6)]);
+                    xs = round::<M>(xs, m0, m1);
                     // diagonal step
-                    let m0 = $X4::new(m0!(8), m0!(10), m0!(12), m0!(14));
-                    let m1 = $X4::new(m1!(8), m1!(10), m1!(12), m1!(14));
-                    xs = undiagonalize(round(diagonalize(xs), m0, m1));
+                    let m0 = mach.vec([m0!(8), m0!(10), m0!(12), m0!(14)]);
+                    let m1 = mach.vec([m1!(8), m1!(10), m1!(12), m1!(14)]);
+                    xs = undiagonalize::<M>(round::<M>(diagonalize::<M>(xs), m0, m1));
                 }
-                xs.0 ^= xs.2 ^ $X4::from_slice_unaligned(&self.h[0..4]);
-                xs.1 ^= xs.3 ^ $X4::from_slice_unaligned(&self.h[4..8]);
-                xs.0.write_to_slice_unaligned(&mut self.h[0..4]);
-                xs.1.write_to_slice_unaligned(&mut self.h[4..8]);
+                unsafe {
+                    xs.0 ^= xs.2 ^ M::$X4::load(&self.h[0]);
+                    xs.1 ^= xs.3 ^ M::$X4::load(&self.h[1]);
+                    xs.0.store(&mut self.h[0]);
+                    xs.1.store(&mut self.h[1]);
+                }
+            }
+
+            fn put_block(&mut self, block: &GenericArray<u8, $Bufsz>, t: ($word, $word)) {
+                self.put_block_impl(SSE2, block, t);
             }
 
             fn finalize(self) -> GenericArray<u8, <$Bufsz as PartialDiv<U2>>::Output> {
                 let mut out = GenericArray::default();
-                for (h, out) in self
-                    .h
-                    .iter()
-                    .zip(out.chunks_exact_mut(mem::size_of::<$word>()))
+                let h0: [$word; 4] = self.h[0].into();
+                let h1: [$word; 4] = self.h[1].into();
+                {
+                let mut chunks = out.chunks_exact_mut(mem::size_of::<$word>());
+                for (h, out) in h0.iter().zip(chunks.by_ref())
                 {
                     $serializer(out, *h)
+                }
+                for (h, out) in h1.iter().zip(chunks)
+                {
+                    $serializer(out, *h)
+                }
                 }
                 out
             }
@@ -138,17 +153,16 @@ macro_rules! define_hasher {
 
         impl core::fmt::Debug for $name {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
-                f.debug_struct("Blake")
-                    .field("compressor", &self.compressor)
-                    .field("buffer.position()", &self.buffer.position())
-                    .finish()
+                f.debug_struct("(Blake)").finish()
             }
         }
 
         impl Default for $name {
             fn default() -> Self {
                 Self {
-                    compressor: $compressor { h: $iv },
+                    compressor: $compressor {
+                        h: [$iv[0].into_vec(), $iv[1].into_vec()],
+                    },
                     buffer: BlockBuffer::default(),
                     t: (0, 0),
                 }
@@ -235,7 +249,7 @@ use consts::{
 use digest::generic_array::typenum::{U128, U28, U32, U48, U64};
 
 #[rustfmt::skip]
-define_compressor!(Compressor256, u32, U64, BE::read_u32, BE::write_u32, BLAKE256_U, 14, 16, 12, 8, 7, u32x4);
+define_compressor!(Compressor256, vec128_storage, u32, U64, BE::read_u32, BE::write_u32, BLAKE256_U, 14, rotate_each_word_right16, rotate_each_word_right12, rotate_each_word_right8, rotate_each_word_right7, u32x4);
 
 #[rustfmt::skip]
 define_hasher!(Blake224, u32, 64, U64, 224, U28, BE::write_u32, Compressor256, BLAKE224_IV);
@@ -244,7 +258,7 @@ define_hasher!(Blake224, u32, 64, U64, 224, U28, BE::write_u32, Compressor256, B
 define_hasher!(Blake256, u32, 64, U64, 256, U32, BE::write_u32, Compressor256, BLAKE256_IV);
 
 #[rustfmt::skip]
-define_compressor!(Compressor512, u64, U128, BE::read_u64, BE::write_u64, BLAKE512_U, 16, 32, 25, 16, 11, u64x4);
+define_compressor!(Compressor512, vec256_storage, u64, U128, BE::read_u64, BE::write_u64, BLAKE512_U, 16, rotate_each_word_right32, rotate_each_word_right25, rotate_each_word_right16, rotate_each_word_right11, u64x2x2);
 
 #[rustfmt::skip]
 define_hasher!(Blake384, u64, 128, U128, 384, U48, BE::write_u64, Compressor512, BLAKE384_IV);
