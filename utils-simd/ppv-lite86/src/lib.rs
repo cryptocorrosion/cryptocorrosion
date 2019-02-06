@@ -2,46 +2,10 @@
 
 //use crypto_simd::*;
 
-// TODO:
+// Design:
 // - safety: safe creation of any machine type is done only by instance methods of a
 //   Machine (which is a ZST + Copy type), which can only by created unsafely or safely
 //   through feature detection (e.g. fn AVX2::try_get() -> Option<Machine>).
-// - move traits to crypto-simd
-// - move emulation (x2/x4) to crypto-simd
-
-// op layouts:
-
-// - lane-vertical / horizontal on intra-lane words: e.g. Vec4::shuffle1230
-// - lanewise new/insert/extract
-
-// - word-vertical: e.g. Add<Word>
-// - wordwise new/insert/extract
-
-// - bit-vertical: e.g. BitAnd
-
-// Arith/RotateEachWord: exclusively wordwise
-// BitOp: bit-vertical
-// shuffle: lane-vertical-parallel / lane-vertical-independent
-// bitswap: ?
-
-// - lanes size isn't necessarily 128
-// - e.g. BLAKE wants u32x4 / u64x4
-//   - cross-lane shuffles are more expensive...
-// X*Y*Z
-
-/*
-128, [u32; 4], u32x4); // (u32x2x2)
-128, [u64; 2], u64x2);
-128, [u128; 1], u128x1);
-
-256, [u32; 8], u32x8); // u32x4x2
-256, [u64; 4], u64x4); // u64x2x2
-256, [u128; 2], u128x2);
-
-512, [u32; 16], u32x16); // u32x8x2 u32x4x4 (u64x2x8)
-512, [u64; 8], u64x8); // u64x4x2 u64x2x4
-512, [u128; 4], u128x4); // u128x2x2
-*/
 
 use std::arch::x86_64::{__m128i, __m256i};
 
@@ -57,7 +21,12 @@ pub mod crypto_simd_new {
         type Output;
         fn andnot(self, rhs: Self) -> Self::Output;
     }
-    pub trait ArithOps: Add<Output = Self> + AddAssign + Sized + Copy + Clone {}
+    pub trait BSwap {
+        fn bswap(self) -> Self;
+    }
+    /// Ops that depend on word size
+    pub trait ArithOps: Add<Output = Self> + AddAssign + Sized + Copy + Clone + BSwap {}
+    /// Ops that are independent of word size and endian
     pub trait BitOps0:
         BitAnd<Output = Self>
         + BitOr<Output = Self>
@@ -92,7 +61,7 @@ pub mod crypto_simd_new {
 
     pub trait RotateEachWord128 {}
 }
-pub use crate::crypto_simd_new::{ArithOps, BitOps128, BitOps32, BitOps64};
+pub use crate::crypto_simd_new::{ArithOps, BSwap, BitOps128, BitOps32, BitOps64};
 
 #[allow(non_camel_case_types)]
 pub mod crypto_simd_new_types {
@@ -164,7 +133,7 @@ pub mod crypto_simd_new_types {
     {
 }
     pub trait u64x2x2<W: u64x2>:
-        BitOps64 + Store<vec256_storage> + Vec2<W> + MultiLane<[W; 2]> + ArithOps + Words4
+        BitOps64 + Store<vec256_storage> + Vec2<W> + MultiLane<[W; 2]> + ArithOps + Words4 + StoreBytes
     {
 }
     pub trait u128x2<W: u128x1>:
@@ -260,18 +229,6 @@ pub(crate) mod features {
 }
 pub(crate) use crate::features::*;
 
-/*
-fn dispatch() {
-    use machines::x86::*;
-    AVX2::AES::try(fn_impl)
-        .or_else(AVX2::try(fn_impl))
-        .or_else(SSE41::AES::try(fn_impl))
-        .or_else(SSE41::try(fn_impl))
-        .or_else(SSSE3::try(fn_impl))
-        .or_else(SSE2::try(fn_impl))
-}
-*/
-
 pub trait Machine: Sized + Copy {
     type S3; // SSSE3
     type S4; // SSE4.1
@@ -304,6 +261,22 @@ pub trait Machine: Sized + Copy {
     {
         self.unpack(t.into_vec())
     }
+
+    // TODO: require the type to be from this machine!
+    fn read_le<V>(self, input: &[u8]) -> V
+    where
+        V: StoreBytes,
+    {
+        unsafe { V::unsafe_read_le(input) }
+    }
+
+    // TODO: require the type to be from this machine!
+    fn read_be<V>(self, input: &[u8]) -> V
+    where
+        V: StoreBytes,
+    {
+        unsafe { V::unsafe_read_be(input) }
+    }
 }
 
 pub mod machine {
@@ -334,28 +307,6 @@ pub mod machine {
             sse2_vectypes!();
         }
 
-        /*
-        impl SSE2 {
-            #[target_feature(enable = "sse2")]
-            unsafe fn run_with_feature<F, FI, R>(f: F) -> R
-            where
-                F: FnOnce(Self) -> R,
-            {
-                f(Self)
-            }
-            fn try_wrap<F, R, FR>(f: F) -> Result<impl FnOnce() -> R, ()>
-            where
-                F: FnOnce(Self) -> R,
-            {
-                if is_x86_feature_detected!("sse2") {
-                    Ok(unsafe { || Self::run_with_feature(f) })
-                } else {
-                    Err(())
-                }
-            }
-        }
-        */
-
         #[derive(Copy, Clone)]
         pub struct SSSE3;
         impl Machine for SSSE3 {
@@ -366,8 +317,6 @@ pub mod machine {
             sse2_vectypes!();
         }
 
-        // sse2 ssse3
-
         #[derive(Copy, Clone)]
         pub struct SSE41;
         impl Machine for SSE41 {
@@ -377,8 +326,6 @@ pub mod machine {
             type NI = NoNI;
             sse2_vectypes!();
         }
-
-        // sse2 ssse3 sse4.1
     }
 }
 
@@ -454,5 +401,8 @@ pub trait Store<S> {
 }
 
 pub trait StoreBytes {
+    unsafe fn unsafe_read_le(input: &[u8]) -> Self;
+    unsafe fn unsafe_read_be(input: &[u8]) -> Self;
     fn write_le(self, out: &mut [u8]);
+    fn write_be(self, out: &mut [u8]);
 }

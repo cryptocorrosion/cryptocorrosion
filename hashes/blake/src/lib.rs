@@ -30,10 +30,10 @@ use ppv_null::{u32x4, u64x4};
 
 use simd::crypto_simd_new::{RotateEachWord32, RotateEachWord64};
 use simd::machine::x86::SSE2;
-use simd::{vec128_storage, vec256_storage, IntoVec, Machine, Store, Words4};
+use simd::{vec128_storage, vec256_storage, IntoVec, Machine, Store, StoreBytes, Words4};
 
 macro_rules! define_compressor {
-    ($compressor:ident, $storage:ident, $word:ident, $Bufsz:ty, $deserializer:path, $serializer:path, $uval:expr,
+    ($compressor:ident, $storage:ident, $word:ident, $Bufsz:ty, $deserializer:path, $uval:expr,
      $rounds:expr, $shift0:ident, $shift1:ident, $shift2: ident, $shift3: ident, $X4:ident) => {
         #[derive(Clone, Copy)]
         struct $compressor {
@@ -108,18 +108,14 @@ macro_rules! define_compressor {
 
             fn finalize(self) -> GenericArray<u8, <$Bufsz as PartialDiv<U2>>::Output> {
                 let mut out = GenericArray::default();
-                let h0: [$word; 4] = self.h[0].into();
-                let h1: [$word; 4] = self.h[1].into();
+                let len = out.len();
                 {
-                let mut chunks = out.chunks_exact_mut(mem::size_of::<$word>());
-                for (h, out) in h0.iter().zip(chunks.by_ref())
-                {
-                    $serializer(out, *h)
-                }
-                for (h, out) in h1.iter().zip(chunks)
-                {
-                    $serializer(out, *h)
-                }
+                    let o = out.split_at_mut(len / 2);
+                    let mach = simd::machine::x86::SSE2;
+                    let h0: <simd::machine::x86::SSE2 as Machine>::$X4 = mach.unpack(self.h[0]);
+                    let h1: <simd::machine::x86::SSE2 as Machine>::$X4 = mach.unpack(self.h[1]);
+                    h0.write_be(o.0);
+                    h1.write_be(o.1);
                 }
                 out
             }
@@ -245,7 +241,7 @@ use consts::{
 use digest::generic_array::typenum::{U128, U28, U32, U48, U64};
 
 #[rustfmt::skip]
-define_compressor!(Compressor256, vec128_storage, u32, U64, BE::read_u32, BE::write_u32, BLAKE256_U, 14, rotate_each_word_right16, rotate_each_word_right12, rotate_each_word_right8, rotate_each_word_right7, u32x4);
+define_compressor!(Compressor256, vec128_storage, u32, U64, BE::read_u32, BLAKE256_U, 14, rotate_each_word_right16, rotate_each_word_right12, rotate_each_word_right8, rotate_each_word_right7, u32x4);
 
 #[rustfmt::skip]
 define_hasher!(Blake224, u32, 64, U64, 224, U28, BE::write_u32, Compressor256, BLAKE224_IV);
@@ -254,7 +250,7 @@ define_hasher!(Blake224, u32, 64, U64, 224, U28, BE::write_u32, Compressor256, B
 define_hasher!(Blake256, u32, 64, U64, 256, U32, BE::write_u32, Compressor256, BLAKE256_IV);
 
 #[rustfmt::skip]
-define_compressor!(Compressor512, vec256_storage, u64, U128, BE::read_u64, BE::write_u64, BLAKE512_U, 16, rotate_each_word_right32, rotate_each_word_right25, rotate_each_word_right16, rotate_each_word_right11, u64x2x2);
+define_compressor!(Compressor512, vec256_storage, u64, U128, BE::read_u64, BLAKE512_U, 16, rotate_each_word_right32, rotate_each_word_right25, rotate_each_word_right16, rotate_each_word_right11, u64x2x2);
 
 #[rustfmt::skip]
 define_hasher!(Blake384, u64, 128, U128, 384, U48, BE::write_u64, Compressor512, BLAKE384_IV);

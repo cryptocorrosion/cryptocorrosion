@@ -451,7 +451,8 @@ where
         key: &GenericArray<u8, Self::KeySize>,
         nonce: &GenericArray<u8, Self::NonceSize>,
     ) -> Self {
-        let m = machine::x86::SSE2;
+        use machine::x86::SSE2;
+        let m = SSE2;
         let ctr_nonce = m.vec([
             0,
             if NonceSize::U32 == 12 {
@@ -462,21 +463,11 @@ where
             LE::read_u32(&nonce[NonceSize::USIZE - 8..NonceSize::USIZE - 4]),
             LE::read_u32(&nonce[NonceSize::USIZE - 4..NonceSize::USIZE]),
         ]);
-        let key0 = m.vec([
-            LE::read_u32(&key[0..4]),
-            LE::read_u32(&key[4..8]),
-            LE::read_u32(&key[8..12]),
-            LE::read_u32(&key[12..16]),
-        ]);
-        let key1 = m.vec([
-            LE::read_u32(&key[16..20]),
-            LE::read_u32(&key[20..24]),
-            LE::read_u32(&key[24..28]),
-            LE::read_u32(&key[28..32]),
-        ]);
+        let key0: <SSE2 as Machine>::u32x4 = m.read_le(&key[..16]);
+        let key1: <SSE2 as Machine>::u32x4 = m.read_le(&key[16..]);
         let state = ChaCha {
-            b: key0,
-            c: key1,
+            b: key0.pack(),
+            c: key1.pack(),
             d: ctr_nonce,
         };
         ChaChaAny {
@@ -505,29 +496,15 @@ impl<Rounds: Unsigned + Default> NewStreamCipher for ChaChaAny<U24, Rounds, X> {
         key: &GenericArray<u8, Self::KeySize>,
         nonce: &GenericArray<u8, Self::NonceSize>,
     ) -> Self {
-        let m = machine::x86::SSE2;
-        let key0 = m.vec([
-            LE::read_u32(&key[0..4]),
-            LE::read_u32(&key[4..8]),
-            LE::read_u32(&key[8..12]),
-            LE::read_u32(&key[12..16]),
-        ]);
-        let key1 = m.vec([
-            LE::read_u32(&key[16..20]),
-            LE::read_u32(&key[20..24]),
-            LE::read_u32(&key[24..28]),
-            LE::read_u32(&key[28..32]),
-        ]);
-        let nonce0 = m.vec([
-            LE::read_u32(&nonce[0..4]),
-            LE::read_u32(&nonce[4..8]),
-            LE::read_u32(&nonce[8..12]),
-            LE::read_u32(&nonce[12..16]),
-        ]);
+        use machine::x86::SSE2;
+        let m = SSE2;
+        let key0: <SSE2 as Machine>::u32x4 = m.read_le(&key[..16]);
+        let key1: <SSE2 as Machine>::u32x4 = m.read_le(&key[16..]);
+        let nonce0: <SSE2 as Machine>::u32x4 = m.read_le(&nonce[..16]);
         let mut state = ChaCha {
-            b: key0,
-            c: key1,
-            d: nonce0,
+            b: key0.pack(),
+            c: key1.pack(),
+            d: nonce0.pack(),
         };
         let x = state.refill_narrow_rounds(Rounds::U32, &mut [0; 0]);
         let ctr_nonce1 = m.vec([

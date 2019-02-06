@@ -44,14 +44,6 @@ macro_rules! def_vec {
             ni: PhantomData<NI>,
         }
 
-        impl<S3, S4, NI> StoreBytes for $vec<S3, S4, NI> {
-            #[inline(always)]
-            fn write_le(self, out: &mut [u8]) {
-                assert_eq!(out.len(), 16);
-                unsafe { _mm_storeu_si128(out as *mut _ as *mut _, self.x) }
-            }
-        }
-
         impl<S3, S4, NI> Store<vec128_storage> for $vec<S3, S4, NI> {
             #[inline(always)]
             unsafe fn unpack(x: vec128_storage) -> Self {
@@ -69,6 +61,35 @@ macro_rules! def_vec {
                     s3: PhantomData,
                     s4: PhantomData,
                     ni: PhantomData,
+                }
+            }
+        }
+
+        impl<S3, S4, NI> StoreBytes for $vec<S3, S4, NI>
+        where
+            Self: BSwap,
+        {
+            #[inline(always)]
+            unsafe fn unsafe_read_le(input: &[u8]) -> Self {
+                assert_eq!(input.len(), 16);
+                Self::new(_mm_loadu_si128(input.as_ptr() as *const _))
+            }
+            #[inline(always)]
+            unsafe fn unsafe_read_be(input: &[u8]) -> Self {
+                assert_eq!(input.len(), 16);
+                Self::new(_mm_loadu_si128(input.as_ptr() as *const _)).bswap()
+            }
+            #[inline(always)]
+            fn write_le(self, out: &mut [u8]) {
+                assert_eq!(out.len(), 16);
+                unsafe { _mm_storeu_si128(out.as_mut_ptr() as *mut _, self.x) }
+            }
+            #[inline(always)]
+            fn write_be(self, out: &mut [u8]) {
+                assert_eq!(out.len(), 16);
+                let x = self.bswap().x;
+                unsafe {
+                    _mm_storeu_si128(out.as_mut_ptr() as *mut _, x);
                 }
             }
         }
@@ -292,21 +313,25 @@ impl_bitops32!(u32x4_sse2);
 impl_bitops64!(u64x2_sse2);
 impl_bitops128!(u128x1_sse2);
 
-impl<S3: Copy, S4: Copy, NI: Copy> ArithOps for u32x4_sse2<S3, S4, NI> {}
-impl<S3: Copy, S4: Copy, NI: Copy> ArithOps for u64x2_sse2<S3, S4, NI> {}
+impl<S3: Copy, S4: Copy, NI: Copy> ArithOps for u32x4_sse2<S3, S4, NI> where
+    u32x4_sse2<S3, S4, NI>: BSwap
+{}
+impl<S3: Copy, S4: Copy, NI: Copy> ArithOps for u64x2_sse2<S3, S4, NI> where
+    u64x2_sse2<S3, S4, NI>: BSwap
+{}
 impl_binop!(u32x4_sse2, Add, add, _mm_add_epi32);
 impl_binop!(u64x2_sse2, Add, add, _mm_add_epi64);
 impl_binop_assign!(u32x4_sse2, AddAssign, add_assign, add);
 impl_binop_assign!(u64x2_sse2, AddAssign, add_assign, add);
 
 impl<S3: Copy, S4: Copy, NI: Copy> u32x4 for u32x4_sse2<S3, S4, NI> where
-    u32x4_sse2<S3, S4, NI>: RotateEachWord32
+    u32x4_sse2<S3, S4, NI>: RotateEachWord32 + BSwap
 {}
 impl<S3: Copy, S4: Copy, NI: Copy> u64x2 for u64x2_sse2<S3, S4, NI> where
-    u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32
+    u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap
 {}
 impl<S3: Copy, S4: Copy, NI: Copy> u128x1 for u128x1_sse2<S3, S4, NI> where
-    u128x1_sse2<S3, S4, NI>: Swap64 + RotateEachWord64 + RotateEachWord32
+    u128x1_sse2<S3, S4, NI>: Swap64 + RotateEachWord64 + RotateEachWord32 + BSwap
 {}
 
 impl<S3, S4, NI> UnsafeFrom<[u32; 4]> for u32x4_sse2<S3, S4, NI> {
@@ -430,6 +455,66 @@ impl<S3, S4, NI> Vec2<u64> for u64x2_sse2<S3, S4, NI> {
                 _ => unreachable!(),
             }
         })
+    }
+}
+
+impl<S4, NI> BSwap for u32x4_sse2<YesS3, S4, NI> {
+    #[inline(always)]
+    fn bswap(self) -> Self {
+        Self::new(unsafe {
+            let k = _mm_set_epi64x(0x0c0d_0e0f_0809_0a0b, 0x0405_0607_0001_0203);
+            _mm_shuffle_epi8(self.x, k)
+        })
+    }
+}
+#[inline(always)]
+fn bswap32_s2(x: __m128i) -> __m128i {
+    unsafe {
+        let mut y = _mm_unpacklo_epi8(x, _mm_setzero_si128());
+        y = _mm_shufflehi_epi16(y, 0b0001_1011);
+        y = _mm_shufflelo_epi16(y, 0b0001_1011);
+        let mut z = _mm_unpackhi_epi8(x, _mm_setzero_si128());
+        z = _mm_shufflehi_epi16(z, 0b0001_1011);
+        z = _mm_shufflelo_epi16(z, 0b0001_1011);
+        _mm_packus_epi16(y, z)
+    }
+}
+impl<S4, NI> BSwap for u32x4_sse2<NoS3, S4, NI> {
+    #[inline(always)]
+    fn bswap(self) -> Self {
+        Self::new(bswap32_s2(self.x))
+    }
+}
+
+impl<S4, NI> BSwap for u64x2_sse2<YesS3, S4, NI> {
+    #[inline(always)]
+    fn bswap(self) -> Self {
+        Self::new(unsafe {
+            let k = _mm_set_epi64x(0x0809_0a0b_0c0d_0e0f, 0x0001_0203_0405_0607);
+            _mm_shuffle_epi8(self.x, k)
+        })
+    }
+}
+impl<S4, NI> BSwap for u64x2_sse2<NoS3, S4, NI> {
+    #[inline(always)]
+    fn bswap(self) -> Self {
+        Self::new(unsafe { bswap32_s2(_mm_shuffle_epi32(self.x, 0b1011_0001)) })
+    }
+}
+
+impl<S4, NI> BSwap for u128x1_sse2<YesS3, S4, NI> {
+    #[inline(always)]
+    fn bswap(self) -> Self {
+        Self::new(unsafe {
+            let k = _mm_set_epi64x(0x0f0e_0d0c_0b0a_0908, 0x0706_0504_0302_0100);
+            _mm_shuffle_epi8(self.x, k)
+        })
+    }
+}
+impl<S4, NI> BSwap for u128x1_sse2<NoS3, S4, NI> {
+    #[inline(always)]
+    fn bswap(self) -> Self {
+        Self::new(unsafe { unimplemented!() })
     }
 }
 
@@ -639,6 +724,35 @@ impl<W: Copy> MultiLane<[W; 2]> for x2<W> {
         x2(lanes)
     }
 }
+impl<W: BSwap + Copy> BSwap for x2<W> {
+    #[inline(always)]
+    fn bswap(self) -> Self {
+        x2([self.0[0].bswap(), self.0[1].bswap()])
+    }
+}
+impl<W: StoreBytes + BSwap + Copy> StoreBytes for x2<W> {
+    #[inline(always)]
+    unsafe fn unsafe_read_le(input: &[u8]) -> Self {
+        let input = input.split_at(16);
+        x2([W::unsafe_read_le(input.0), W::unsafe_read_le(input.1)])
+    }
+    #[inline(always)]
+    unsafe fn unsafe_read_be(input: &[u8]) -> Self {
+        x2::unsafe_read_le(input).bswap()
+    }
+    #[inline(always)]
+    fn write_le(self, out: &mut [u8]) {
+        let out = out.split_at_mut(16);
+        self.0[0].write_le(out.0);
+        self.0[1].write_le(out.1);
+    }
+    #[inline(always)]
+    fn write_be(self, out: &mut [u8]) {
+        let out = out.split_at_mut(16);
+        self.0[0].write_be(out.0);
+        self.0[1].write_be(out.1);
+    }
+}
 
 #[derive(Copy, Clone, Default)]
 #[allow(non_camel_case_types)]
@@ -785,6 +899,46 @@ impl<W: Copy> MultiLane<[W; 4]> for x4<W> {
         x4(lanes)
     }
 }
+impl<W: BSwap + Copy> BSwap for x4<W> {
+    #[inline(always)]
+    fn bswap(self) -> Self {
+        x4([
+            self.0[0].bswap(),
+            self.0[1].bswap(),
+            self.0[2].bswap(),
+            self.0[3].bswap(),
+        ])
+    }
+}
+impl<W: StoreBytes + BSwap + Copy> StoreBytes for x4<W> {
+    #[inline(always)]
+    unsafe fn unsafe_read_le(input: &[u8]) -> Self {
+        x4([
+            W::unsafe_read_le(&input[0..16]),
+            W::unsafe_read_le(&input[16..32]),
+            W::unsafe_read_le(&input[32..48]),
+            W::unsafe_read_le(&input[48..64]),
+        ])
+    }
+    #[inline(always)]
+    unsafe fn unsafe_read_be(input: &[u8]) -> Self {
+        x4::unsafe_read_le(input).bswap()
+    }
+    #[inline(always)]
+    fn write_le(self, out: &mut [u8]) {
+        self.0[0].write_le(&mut out[0..16]);
+        self.0[1].write_le(&mut out[16..32]);
+        self.0[2].write_le(&mut out[32..48]);
+        self.0[3].write_le(&mut out[48..64]);
+    }
+    #[inline(always)]
+    fn write_be(self, out: &mut [u8]) {
+        self.0[0].write_be(&mut out[0..16]);
+        self.0[1].write_be(&mut out[16..32]);
+        self.0[2].write_be(&mut out[32..48]);
+        self.0[3].write_be(&mut out[48..64]);
+    }
+}
 impl<W: Copy + LaneWords4> LaneWords4 for x4<W> {
     #[inline(always)]
     fn shuffle_lane_words2301(self) -> Self {
@@ -830,21 +984,117 @@ pub type u64x2x4_sse2<S3, S4, NI> = x4<u64x2_sse2<S3, S4, NI>>;
 pub type u128x4_sse2<S3, S4, NI> = x4<u128x1_sse2<S3, S4, NI>>;
 
 impl<S3: Copy, S4: Copy, NI: Copy> u32x4x2<u32x4_sse2<S3, S4, NI>> for u32x4x2_sse2<S3, S4, NI> where
-    u32x4_sse2<S3, S4, NI>: RotateEachWord32
+    u32x4_sse2<S3, S4, NI>: RotateEachWord32 + BSwap
 {}
 impl<S3: Copy, S4: Copy, NI: Copy> u64x2x2<u64x2_sse2<S3, S4, NI>> for u64x2x2_sse2<S3, S4, NI> where
-    u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32
+    u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap
 {}
 impl<S3: Copy, S4: Copy, NI: Copy> u128x2<u128x1_sse2<S3, S4, NI>> for u128x2_sse2<S3, S4, NI> where
-    u128x1_sse2<S3, S4, NI>: Swap64
+    u128x1_sse2<S3, S4, NI>: Swap64 + BSwap
 {}
 
 impl<S3: Copy, S4: Copy, NI: Copy> u32x4x4<u32x4_sse2<S3, S4, NI>> for u32x4x4_sse2<S3, S4, NI> where
-    u32x4_sse2<S3, S4, NI>: RotateEachWord32
+    u32x4_sse2<S3, S4, NI>: RotateEachWord32 + BSwap
 {}
 impl<S3: Copy, S4: Copy, NI: Copy> u64x2x4<u64x2_sse2<S3, S4, NI>> for u64x2x4_sse2<S3, S4, NI> where
-    u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32
+    u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap
 {}
 impl<S3: Copy, S4: Copy, NI: Copy> u128x4<u128x1_sse2<S3, S4, NI>> for u128x4_sse2<S3, S4, NI> where
-    u128x1_sse2<S3, S4, NI>: Swap64
+    u128x1_sse2<S3, S4, NI>: Swap64 + BSwap
 {}
+
+///// Debugging
+
+use core::fmt::{Debug, Formatter, Result};
+
+// TODO: S4 impl: cmpeq_epi64 -> shuffle_epi32 -> cvtsi128_si64
+#[inline(always)]
+unsafe fn eq128_s2(x: __m128i, y: __m128i) -> bool {
+    let q = _mm_cmpeq_epi32(x, y);
+    let p = _mm_extract_epi64(q, 1);
+    let q = _mm_cvtsi128_si64(q);
+    (p & q).wrapping_add(1) == 0
+}
+
+impl<S3, S4, NI> PartialEq for u32x4_sse2<S3, S4, NI> {
+    fn eq(&self, rhs: &Self) -> bool {
+        unsafe { eq128_s2(self.x, rhs.x) }
+    }
+}
+impl<S3, S4, NI> Debug for u32x4_sse2<S3, S4, NI> {
+    #[cold]
+    fn fmt(&self, fmt: &mut Formatter) -> Result {
+        unsafe {
+            let xs = [
+                _mm_cvtsi128_si32(self.x),
+                _mm_extract_epi32(self.x, 1),
+                _mm_extract_epi32(self.x, 2),
+                _mm_extract_epi32(self.x, 3),
+            ];
+            fmt.write_fmt(format_args!("{:08x?}", &xs))
+        }
+    }
+}
+
+impl<S3, S4, NI> PartialEq for u64x2_sse2<S3, S4, NI> {
+    #[inline(always)]
+    fn eq(&self, rhs: &Self) -> bool {
+        unsafe { eq128_s2(self.x, rhs.x) }
+    }
+}
+impl<S3, S4, NI> Debug for u64x2_sse2<S3, S4, NI> {
+    #[cold]
+    fn fmt(&self, fmt: &mut Formatter) -> Result {
+        unsafe {
+            let xs = [_mm_cvtsi128_si64(self.x), _mm_extract_epi64(self.x, 1)];
+            fmt.write_fmt(format_args!("{:016x?}", &xs))
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::machine::x86::{SSE2, SSSE3};
+    use crate::Machine;
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_bswap32_s2_vs_s3() {
+        let xs = [0x0f0e_0d0c, 0x0b0a_0908, 0x0706_0504, 0x0302_0100];
+        let ys = [0x0c0d_0e0f, 0x0809_0a0b, 0x0405_0607, 0x0001_0203];
+
+        let x_s2 = {
+            let x_s2: <SSE2 as Machine>::u32x4 = SSE2.vec(xs);
+            x_s2.bswap()
+        };
+
+        let x_s3 = {
+            let x_s3: <SSSE3 as Machine>::u32x4 = SSSE3.vec(xs);
+            x_s3.bswap()
+        };
+
+        assert_eq!(x_s2, unsafe { core::mem::transmute(x_s3) });
+        assert_eq!(x_s2, SSE2.vec(ys));
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_bswap64_s2_vs_s3() {
+        let xs = [0x0f0e_0d0c_0b0a_0908, 0x0706_0504_0302_0100];
+        let ys = [0x0809_0a0b_0c0d_0e0f, 0x0001_0203_0405_0607];
+
+        let x_s2 = {
+            let x_s2: <SSE2 as Machine>::u64x2 = SSE2.vec(xs);
+            x_s2.bswap()
+        };
+
+        let x_s3 = {
+            let x_s3: <SSSE3 as Machine>::u64x2 = SSSE3.vec(xs);
+            x_s3.bswap()
+        };
+
+        assert_eq!(x_s2, SSE2.vec(ys));
+        assert_eq!(x_s3, unsafe { core::mem::transmute(x_s3) });
+    }
+}
