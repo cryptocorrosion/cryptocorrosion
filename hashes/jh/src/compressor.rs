@@ -153,14 +153,14 @@ fn f8<M: Machine>(mach: M, state: &mut [vec128_storage; 8], data: *const u8) {
     #[allow(clippy::cast_ptr_alignment)]
     let data = data as *const M::u128x1;
     let mut y = X8::<M>(
-        mach.load(&state[0]),
-        mach.load(&state[1]),
-        mach.load(&state[2]),
-        mach.load(&state[3]),
-        mach.load(&state[4]),
-        mach.load(&state[5]),
-        mach.load(&state[6]),
-        mach.load(&state[7]),
+        mach.unpack(state[0]),
+        mach.unpack(state[1]),
+        mach.unpack(state[2]),
+        mach.unpack(state[3]),
+        mach.unpack(state[4]),
+        mach.unpack(state[5]),
+        mach.unpack(state[6]),
+        mach.unpack(state[7]),
     );
     unsafe {
         y.0 ^= ptr::read_unaligned(data);
@@ -191,14 +191,16 @@ fn f8<M: Machine>(mach: M, state: &mut [vec128_storage; 8], data: *const u8) {
         y.6 ^= ptr::read_unaligned(data.offset(2));
         y.7 ^= ptr::read_unaligned(data.offset(3));
     }
-    y.0.store(&mut state[0]);
-    y.1.store(&mut state[1]);
-    y.2.store(&mut state[2]);
-    y.3.store(&mut state[3]);
-    y.4.store(&mut state[4]);
-    y.5.store(&mut state[5]);
-    y.6.store(&mut state[6]);
-    y.7.store(&mut state[7]);
+    *state = [
+        y.0.pack(),
+        y.1.pack(),
+        y.2.pack(),
+        y.3.pack(),
+        y.4.pack(),
+        y.5.pack(),
+        y.6.pack(),
+        y.7.pack(),
+    ];
 }
 
 #[derive(Clone, Copy)]

@@ -328,25 +328,6 @@ impl ChaCha {
 
 mod chacha_any {
     use super::*;
-    #[derive(Clone, Copy)]
-    pub union Block {
-        pub bytes: [u8; BLOCK],
-    }
-    impl Default for Block {
-        fn default() -> Self {
-            Block { bytes: [0; BLOCK] }
-        }
-    }
-    #[derive(Clone, Copy)]
-    pub union WordBytes {
-        pub bytes: [u8; BUFSZ],
-    }
-    impl Default for WordBytes {
-        fn default() -> Self {
-            WordBytes { bytes: [0; BUFSZ] }
-        }
-    }
-
     #[derive(Clone)]
     pub struct ChaCha {
         pub b: vec128_storage,
@@ -357,7 +338,7 @@ mod chacha_any {
     #[derive(Clone)]
     pub struct Buffer {
         pub state: ChaCha,
-        pub out: Block,
+        pub out: [u8; BLOCK],
         pub have: i8,
         pub len: u64,
         pub fresh: bool,
@@ -401,8 +382,7 @@ impl Buffer {
         // We can do this before the overflow check because this is not an effect of the current
         // operation.
         if self.have < 0 {
-            self.state
-                .refill_narrow(drounds, unsafe { &mut self.out.bytes });
+            self.state.refill_narrow(drounds, &mut self.out);
             self.have += BLOCK as i8;
             // checked in seek()
             self.len -= 1;
@@ -421,10 +401,7 @@ impl Buffer {
         self.fresh &= blocks_needed == 0;
         // If we have data in the buffer, use that first.
         let (d0, d1) = data.split_at_mut(have_ready);
-        for (data_b, key_b) in d0
-            .iter_mut()
-            .zip(unsafe { &self.out.bytes[(BLOCK - have)..] })
-        {
+        for (data_b, key_b) in d0.iter_mut().zip(&self.out[(BLOCK - have)..]) {
             *data_b ^= *key_b;
         }
         data = d1;
@@ -433,9 +410,9 @@ impl Buffer {
         if EnableWide::BOOL {
             let (d0, d1) = data.split_at_mut(data.len() & !(BUFSZ - 1));
             for dd in d0.chunks_exact_mut(BUFSZ) {
-                let mut buf = WordBytes::default();
-                self.state.refill_wide(drounds, unsafe { &mut buf.bytes });
-                for (data_b, key_b) in dd.iter_mut().zip(unsafe { buf.bytes.iter() }) {
+                let mut buf = [0; BUFSZ];
+                self.state.refill_wide(drounds, &mut buf);
+                for (data_b, key_b) in dd.iter_mut().zip(buf.iter()) {
                     *data_b ^= *key_b;
                 }
             }
@@ -443,9 +420,8 @@ impl Buffer {
         }
         // Handle the tail a block at a time so we'll have storage for any leftovers.
         for dd in data.chunks_mut(BLOCK) {
-            self.state
-                .refill_narrow(drounds, unsafe { &mut self.out.bytes });
-            for (data_b, key_b) in dd.iter_mut().zip(unsafe { self.out.bytes.iter() }) {
+            self.state.refill_narrow(drounds, &mut self.out);
+            for (data_b, key_b) in dd.iter_mut().zip(self.out.iter()) {
                 *data_b ^= *key_b;
             }
             have = BLOCK - dd.len();
@@ -506,7 +482,7 @@ where
         ChaChaAny {
             state: Buffer {
                 state,
-                out: Block::default(),
+                out: [0; BLOCK],
                 have: 0,
                 len: if NonceSize::U32 == 12 {
                     SMALL_LEN
@@ -566,7 +542,7 @@ impl<Rounds: Unsigned + Default> NewStreamCipher for ChaChaAny<U24, Rounds, X> {
         ChaChaAny {
             state: Buffer {
                 state,
-                out: Block::default(),
+                out: [0; BLOCK],
                 have: 0,
                 len: BIG_LEN,
                 fresh: true,

@@ -83,8 +83,7 @@ macro_rules! define_compressor {
                 }
 
                 let u = (mach.vec([U[0], U[1], U[2], U[3]]), mach.vec([U[4], U[5], U[6], U[7]]));
-                let mut xs = unsafe {
-                    (M::$X4::load(&self.h[0]), M::$X4::load(&self.h[1]), u.0, u.1)};
+                let mut xs: (M::$X4, M::$X4, _, _) = (mach.unpack(self.h[0]), mach.unpack(self.h[1]), u.0, u.1);
                 xs.3 ^= mach.vec([t.0, t.0, t.1, t.1]);
                 for sigma in &SIGMA[..$rounds] {
                     macro_rules! m0 { ($e:expr) => (m[sigma[$e] as usize] ^ U[sigma[$e + 1] as usize]) }
@@ -98,12 +97,9 @@ macro_rules! define_compressor {
                     let m1 = mach.vec([m1!(8), m1!(10), m1!(12), m1!(14)]);
                     xs = undiagonalize::<M>(round::<M>(diagonalize::<M>(xs), m0, m1));
                 }
-                unsafe {
-                    xs.0 ^= xs.2 ^ M::$X4::load(&self.h[0]);
-                    xs.1 ^= xs.3 ^ M::$X4::load(&self.h[1]);
-                    xs.0.store(&mut self.h[0]);
-                    xs.1.store(&mut self.h[1]);
-                }
+                let h: (M::$X4, M::$X4) = (mach.unpack(self.h[0]), mach.unpack(self.h[1]));
+                self.h[0] = (h.0 ^ xs.0 ^ xs.2).pack();
+                self.h[1] = (h.1 ^ xs.1 ^ xs.3).pack();
             }
 
             fn put_block(&mut self, block: &GenericArray<u8, $Bufsz>, t: ($word, $word)) {

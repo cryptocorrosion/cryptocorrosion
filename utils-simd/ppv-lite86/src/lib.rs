@@ -290,14 +290,6 @@ pub trait Machine: Sized + Copy {
     type u64x2x4: u64x2x4<Self::u64x2>;
     type u128x4: u128x4<Self::u128x1>;
 
-    fn load<V, S>(self, s: &S) -> V
-    where
-        V: Store<S>,
-        S: Copy,
-    {
-        unsafe { V::load(s) }
-    }
-
     fn unpack<V, S>(self, s: S) -> V
     where
         V: Store<S>,
@@ -459,19 +451,6 @@ impl_into!(vec512_storage, [u128; 4], u128x4);
 pub trait Store<S> {
     unsafe fn unpack(p: S) -> Self;
     fn pack(self) -> S;
-    unsafe fn load(p: &S) -> Self
-    where
-        Self: Sized,
-        S: Copy,
-    {
-        Self::unpack(*p)
-    }
-    fn store(self, p: &mut S)
-    where
-        Self: Sized,
-    {
-        *p = self.pack();
-    }
 }
 
 pub trait StoreBytes {
