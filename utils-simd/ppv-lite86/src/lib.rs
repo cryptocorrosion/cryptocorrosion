@@ -75,7 +75,7 @@ pub mod crypto_simd_new_types {
 
     use crate::{
         vec128_storage, vec256_storage, vec512_storage, ArithOps, BitOps128, BitOps32, BitOps64,
-        Store, StoreBytes,
+        Machine, Store, StoreBytes,
     };
 
     pub trait UnsafeFrom<T> {
@@ -121,66 +121,102 @@ pub mod crypto_simd_new_types {
         fn swap64(self) -> Self;
     }
 
-    pub trait u32x4:
-        BitOps32 + Store<vec128_storage> + ArithOps + Vec4<u32> + Words4 + LaneWords4 + StoreBytes
+    pub trait u32x4<M: Machine>:
+        BitOps32
+        + Store<vec128_storage>
+        + ArithOps
+        + Vec4<u32>
+        + Words4
+        + LaneWords4
+        + StoreBytes
+        + MultiLane<[u32; 4]>
+        + Into<vec128_storage>
     {
 }
-    pub trait u64x2: BitOps64 + Store<vec128_storage> + ArithOps + Vec2<u64> {}
-    pub trait u128x1: BitOps128 + Store<vec128_storage> + Swap64 {}
+    pub trait u64x2<M: Machine>:
+        BitOps64
+        + Store<vec128_storage>
+        + ArithOps
+        + Vec2<u64>
+        + MultiLane<[u64; 2]>
+        + Into<vec128_storage>
+    {
+}
+    pub trait u128x1<M: Machine>:
+        BitOps128
+        + Store<vec128_storage>
+        + Swap64
+        + Into<M::u32x4>
+        + Into<M::u64x2>
+        + MultiLane<[u128; 1]>
+        + Into<vec128_storage>
+    {
+}
 
-    pub trait u32x4x2<W: u32x4>:
-        BitOps32 + Store<vec256_storage> + Vec2<W> + MultiLane<[W; 2]> + ArithOps
+    pub trait u32x4x2<M: Machine>:
+        BitOps32
+        + Store<vec256_storage>
+        + Vec2<M::u32x4>
+        + MultiLane<[M::u32x4; 2]>
+        + ArithOps
+        + Into<vec256_storage>
     {
 }
-    pub trait u64x2x2<W: u64x2>:
-        BitOps64 + Store<vec256_storage> + Vec2<W> + MultiLane<[W; 2]> + ArithOps + Words4 + StoreBytes
+    pub trait u64x2x2<M: Machine>:
+        BitOps64
+        + Store<vec256_storage>
+        + Vec2<M::u64x2>
+        + MultiLane<[M::u64x2; 2]>
+        + MultiLane<[u64; 4]> // !
+        + ArithOps
+        + Words4
+        + StoreBytes
+        + Into<vec256_storage>
     {
 }
-    pub trait u128x2<W: u128x1>:
-        BitOps128 + Store<vec256_storage> + Vec2<W> + MultiLane<[W; 2]> + Swap64
+    pub trait u128x2<M: Machine>:
+        BitOps128
+        + Store<vec256_storage>
+        + Vec2<M::u128x1>
+        + MultiLane<[M::u128x1; 2]>
+        + Swap64
+        + Into<M::u32x4x2>
+        + Into<M::u64x2x2>
+        + Into<vec256_storage>
     {
 }
 
-    pub trait u32x4x4<W: u32x4>:
-        BitOps32 + Store<vec512_storage> + Vec4<W> + MultiLane<[W; 4]> + ArithOps + LaneWords4
+    pub trait u32x4x4<M: Machine>:
+        BitOps32
+        + Store<vec512_storage>
+        + Vec4<M::u32x4>
+        + MultiLane<[M::u32x4; 4]>
+        + ArithOps
+        + LaneWords4
+        + Into<vec512_storage>
     {
 }
-    pub trait u64x2x4<W: u64x2>:
-        BitOps64 + Store<vec512_storage> + Vec4<W> + MultiLane<[W; 4]> + ArithOps
+    pub trait u64x2x4<M: Machine>:
+        BitOps64
+        + Store<vec512_storage>
+        + Vec4<M::u64x2>
+        + MultiLane<[M::u64x2; 4]>
+        + ArithOps
+        + Into<vec512_storage>
     {
 }
     // TODO: Words4
-    pub trait u128x4<W: u128x1>:
-        BitOps128 + Store<vec512_storage> + Vec4<W> + MultiLane<[W; 4]> + Swap64
+    pub trait u128x4<M: Machine>:
+        BitOps128
+        + Store<vec512_storage>
+        + Vec4<M::u128x1>
+        + MultiLane<[M::u128x1; 4]>
+        + Swap64
+        + Into<M::u32x4x4>
+        + Into<M::u64x2x4>
+        + Into<vec512_storage>
     {
 }
-
-    /// Build a vector from words
-    pub trait IntoVec<v> {
-        fn into_vec(self) -> v;
-    }
-
-    macro_rules! impl_into_vec {
-        ($storage:ident, $array:ty, $output:ident) => {
-            impl IntoVec<$storage> for $array {
-                fn into_vec(self) -> $storage {
-                    $storage { $output: self }
-                }
-            }
-        };
-    }
-
-    impl_into_vec!(vec128_storage, [u32; 4], u32x4);
-    impl_into_vec!(vec128_storage, [u64; 2], u64x2);
-    impl_into_vec!(vec128_storage, [u128; 1], u128x1);
-
-    impl_into_vec!(vec256_storage, [u32; 8], u32x8);
-    impl_into_vec!(vec256_storage, [u64; 4], u64x4);
-    impl_into_vec!(vec256_storage, [u128; 2], u128x2);
-
-    impl_into_vec!(vec512_storage, [u32; 16], u32x16);
-    impl_into_vec!(vec512_storage, [u64; 8], u64x8);
-    impl_into_vec!(vec512_storage, [u128; 4], u128x4);
 
     /// A vector composed of multiple 128-bit lanes.
     pub trait MultiLane<Lanes> {
@@ -235,37 +271,27 @@ pub(crate) mod features {
 pub(crate) use crate::features::*;
 
 pub trait Machine: Sized + Copy {
-    type S3; // SSSE3
-    type S4; // SSE4.1
-    type A1; // AVX
-    type A2; // AVX2
-    type NI; // AES
+    type u32x4: u32x4<Self>;
+    type u64x2: u64x2<Self>;
+    type u128x1: u128x1<Self>;
 
-    type u32x4: u32x4;
-    type u64x2: u64x2;
-    type u128x1: u128x1;
+    type u32x4x2: u32x4x2<Self>;
+    type u64x2x2: u64x2x2<Self>;
+    type u128x2: u128x2<Self>;
 
-    type u32x4x2: u32x4x2<Self::u32x4>;
-    type u64x2x2: u64x2x2<Self::u64x2>;
-    type u128x2: u128x2<Self::u128x1>;
+    type u32x4x4: u32x4x4<Self>;
+    type u64x2x4: u64x2x4<Self>;
+    type u128x4: u128x4<Self>;
 
-    type u32x4x4: u32x4x4<Self::u32x4>;
-    type u64x2x4: u64x2x4<Self::u64x2>;
-    type u128x4: u128x4<Self::u128x1>;
-
-    fn unpack<V, S>(self, s: S) -> V
-    where
-        V: Store<S>,
-    {
+    fn unpack<S, V: Store<S>>(self, s: S) -> V {
         unsafe { V::unpack(s) }
     }
 
-    fn vec<V, T, S>(self, t: T) -> V
+    fn vec<V, A>(self, a: A) -> V
     where
-        T: IntoVec<S>,
-        V: Store<S>,
+        V: MultiLane<A>,
     {
-        self.unpack(t.into_vec())
+        V::from_lanes(a)
     }
 
     // TODO: require the type to be from this machine!
@@ -283,71 +309,55 @@ pub trait Machine: Sized + Copy {
     {
         unsafe { V::unsafe_read_be(input) }
     }
+
+    unsafe fn instance() -> Self;
 }
 
 pub mod machine {
     pub mod x86 {
+        use core::marker::PhantomData;
+        use crate::crypto_simd_new::*;
         use crate::*;
-        macro_rules! sse2_vectypes {
-            () => {
-                type u32x4 = sse2::u32x4_sse2<Self::S3, Self::S4, Self::NI>;
-                type u64x2 = sse2::u64x2_sse2<Self::S3, Self::S4, Self::NI>;
-                type u128x1 = sse2::u128x1_sse2<Self::S3, Self::S4, Self::NI>;
-
-                type u32x4x2 = sse2::u32x4x2_sse2<Self::S3, Self::S4, Self::NI>;
-                type u64x2x2 = sse2::u64x2x2_sse2<Self::S3, Self::S4, Self::NI>;
-                type u128x2 = sse2::u128x2_sse2<Self::S3, Self::S4, Self::NI>;
-
-                type u32x4x4 = sse2::u32x4x4_sse2<Self::S3, Self::S4, Self::NI>;
-                type u64x2x4 = sse2::u64x2x4_sse2<Self::S3, Self::S4, Self::NI>;
-                type u128x4 = sse2::u128x4_sse2<Self::S3, Self::S4, Self::NI>;
-            };
-        }
-        #[derive(Copy, Clone)]
-        pub struct SSE2;
-        impl Machine for SSE2 {
-            type S3 = NoS3;
-            type S4 = NoS4;
-            type A1 = NoA1;
-            type A2 = NoA2;
-            type NI = NoNI;
-            sse2_vectypes!();
-        }
 
         #[derive(Copy, Clone)]
-        pub struct SSSE3;
-        impl Machine for SSSE3 {
-            type S3 = YesS3;
-            type S4 = NoS4;
-            type A1 = NoA1;
-            type A2 = NoA2;
-            type NI = NoNI;
-            sse2_vectypes!();
+        pub struct Machine86<S3, S4, NI>(PhantomData<(S3, S4, NI)>);
+        impl<S3: Copy, S4: Copy, NI: Copy> Machine for Machine86<S3, S4, NI>
+        where
+            sse2::u128x1_sse2<S3, S4, NI>: Swap64,
+            sse2::u32x4_sse2<S3, S4, NI>: RotateEachWord32,
+            sse2::u64x2_sse2<S3, S4, NI>: RotateEachWord32,
+            sse2::u32x4_sse2<S3, S4, NI>: BSwap,
+            sse2::u64x2_sse2<S3, S4, NI>: BSwap,
+            sse2::u128x1_sse2<S3, S4, NI>: BSwap,
+            sse2::u128x2_sse2<S3, S4, NI>: Into<sse2::u64x2x2_sse2<S3, S4, NI>>,
+            sse2::u128x2_sse2<S3, S4, NI>: Into<sse2::u32x4x2_sse2<S3, S4, NI>>,
+            sse2::u128x4_sse2<S3, S4, NI>: Into<sse2::u64x2x4_sse2<S3, S4, NI>>,
+            sse2::u128x4_sse2<S3, S4, NI>: Into<sse2::u32x4x4_sse2<S3, S4, NI>>,
+        {
+            type u32x4 = sse2::u32x4_sse2<S3, S4, NI>;
+            type u64x2 = sse2::u64x2_sse2<S3, S4, NI>;
+            type u128x1 = sse2::u128x1_sse2<S3, S4, NI>;
+
+            type u32x4x2 = sse2::u32x4x2_sse2<S3, S4, NI>;
+            type u64x2x2 = sse2::u64x2x2_sse2<S3, S4, NI>;
+            type u128x2 = sse2::u128x2_sse2<S3, S4, NI>;
+
+            type u32x4x4 = sse2::u32x4x4_sse2<S3, S4, NI>;
+            type u64x2x4 = sse2::u64x2x4_sse2<S3, S4, NI>;
+            type u128x4 = sse2::u128x4_sse2<S3, S4, NI>;
+
+            #[inline(always)]
+            unsafe fn instance() -> Self {
+                Machine86(PhantomData)
+            }
         }
 
-        #[derive(Copy, Clone)]
-        pub struct SSE41;
-        impl Machine for SSE41 {
-            type S3 = YesS3;
-            type S4 = YesS4;
-            type A1 = NoA1;
-            type A2 = NoA2;
-            type NI = NoNI;
-            sse2_vectypes!();
-        }
-
+        pub type SSE2 = Machine86<NoS3, NoS4, NoNI>;
+        pub type SSSE3 = Machine86<YesS3, NoS4, NoNI>;
+        pub type SSE41 = Machine86<YesS3, YesS4, NoNI>;
         /// AVX but not AVX2: only 128-bit integer operations, but use VEX versions of everything
         /// to avoid expensive SSE/VEX conflicts.
-        #[derive(Copy, Clone)]
-        pub struct AVX;
-        impl Machine for AVX {
-            type S3 = YesS3;
-            type S4 = YesS4;
-            type A1 = YesA1;
-            type A2 = NoA2;
-            type NI = NoNI;
-            sse2_vectypes!();
-        }
+        pub type AVX = Machine86<YesS3, YesS4, NoNI>;
     }
 }
 
@@ -380,14 +390,15 @@ impl Store<vec128_storage> for vec128_storage {
     unsafe fn unpack(p: vec128_storage) -> Self {
         p
     }
-    #[inline(always)]
-    fn pack(self) -> vec128_storage {
-        self
-    }
 }
 impl<'a> Into<&'a [u32; 4]> for &'a vec128_storage {
     fn into(self) -> &'a [u32; 4] {
         unsafe { &self.u32x4 }
+    }
+}
+impl Into<vec128_storage> for [u32; 4] {
+    fn into(self) -> vec128_storage {
+        vec128_storage { u32x4: self }
     }
 }
 
@@ -403,6 +414,11 @@ pub union vec256_storage {
 impl_into!(vec256_storage, [u32; 8], u32x8);
 impl_into!(vec256_storage, [u64; 4], u64x4);
 impl_into!(vec256_storage, [u128; 2], u128x2);
+impl Into<vec256_storage> for [u64; 4] {
+    fn into(self) -> vec256_storage {
+        vec256_storage { u64x4: self }
+    }
+}
 
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone)]
@@ -419,7 +435,6 @@ impl_into!(vec512_storage, [u128; 4], u128x4);
 
 pub trait Store<S> {
     unsafe fn unpack(p: S) -> Self;
-    fn pack(self) -> S;
 }
 
 pub trait StoreBytes {
@@ -450,25 +465,25 @@ macro_rules! dispatch {
                 if is_x86_feature_detected!("avx") {
                     #[target_feature(enable = "avx")]
                     unsafe fn impl_avx($($arg: $argty),*) -> $ret {
-                        fn_impl($crate::machine::x86::AVX, $($arg),*)
+                        fn_impl($crate::machine::x86::AVX::instance(), $($arg),*)
                     }
                     impl_avx
                 } else if is_x86_feature_detected!("sse4.1") {
                     #[target_feature(enable = "sse4.1")]
                     unsafe fn impl_sse41($($arg: $argty),*) -> $ret {
-                        fn_impl($crate::machine::x86::SSE41, $($arg),*)
+                        fn_impl($crate::machine::x86::SSE41::instance(), $($arg),*)
                     }
                     impl_sse41
                 } else if is_x86_feature_detected!("ssse3") {
                     #[target_feature(enable = "ssse3")]
                     unsafe fn impl_ssse3($($arg: $argty),*) -> $ret {
-                        fn_impl($crate::machine::x86::SSSE3, $($arg),*)
+                        fn_impl($crate::machine::x86::SSSE3::instance(), $($arg),*)
                     }
                     impl_ssse3
                 } else if is_x86_feature_detected!("sse2") {
                     #[target_feature(enable = "sse2")]
                     unsafe fn impl_sse2($($arg: $argty),*) -> $ret {
-                        fn_impl($crate::machine::x86::SSE2, $($arg),*)
+                        fn_impl($crate::machine::x86::SSE2::instance(), $($arg),*)
                     }
                     impl_sse2
                 } else {
@@ -508,13 +523,13 @@ macro_rules! dispatch_light128 {
                 if is_x86_feature_detected!("avx") {
                     #[target_feature(enable = "avx")]
                     unsafe fn impl_avx($($arg: $argty),*) -> $ret {
-                        fn_impl($crate::machine::x86::AVX, $($arg),*)
+                        fn_impl($crate::machine::x86::AVX::instance(), $($arg),*)
                     }
                     impl_avx
                 } else if is_x86_feature_detected!("sse2") {
                     #[target_feature(enable = "sse2")]
                     unsafe fn impl_sse2($($arg: $argty),*) -> $ret {
-                        fn_impl($crate::machine::x86::SSE2, $($arg),*)
+                        fn_impl($crate::machine::x86::SSE2::instance(), $($arg),*)
                     }
                     impl_sse2
                 } else {
@@ -554,13 +569,13 @@ macro_rules! dispatch_light256 {
                 if is_x86_feature_detected!("avx") {
                     #[target_feature(enable = "avx")]
                     unsafe fn impl_avx($($arg: $argty),*) -> $ret {
-                        fn_impl($crate::machine::x86::AVX, $($arg),*)
+                        fn_impl($crate::machine::x86::AVX::instance(), $($arg),*)
                     }
                     impl_avx
                 } else if is_x86_feature_detected!("sse2") {
                     #[target_feature(enable = "sse2")]
                     unsafe fn impl_sse2($($arg: $argty),*) -> $ret {
-                        fn_impl($crate::machine::x86::SSE2, $($arg),*)
+                        fn_impl($crate::machine::x86::SSE2::instance(), $($arg),*)
                     }
                     impl_sse2
                 } else {

@@ -12,7 +12,7 @@ use ppv_null::{u128x1, u128x2};
 #[cfg(all(feature = "simd", not(feature = "packed_simd")))]
 use simd::crypto_simd_new::AndNot;
 #[cfg(all(feature = "simd", not(feature = "packed_simd")))]
-use simd::{vec128_storage, Machine, Store, Swap64, VZip, Vec2};
+use simd::{vec128_storage, Machine, Swap64, VZip, Vec2};
 
 const E8_BITSLICE_ROUNDCONSTANT: [[u8; 32]; 42] = [
     hex!("72d5dea2df15f8677b84150ab723155781abd6904d5a87f64e9f4fc5c3d12b40"),
@@ -190,14 +190,14 @@ dispatch!(mach, M, {
             y.7 ^= ptr::read_unaligned(data.offset(3));
         }
         *state = [
-            y.0.pack(),
-            y.1.pack(),
-            y.2.pack(),
-            y.3.pack(),
-            y.4.pack(),
-            y.5.pack(),
-            y.6.pack(),
-            y.7.pack(),
+            y.0.into(),
+            y.1.into(),
+            y.2.into(),
+            y.3.into(),
+            y.4.into(),
+            y.5.into(),
+            y.6.into(),
+            y.7.into(),
         ];
     }
 });

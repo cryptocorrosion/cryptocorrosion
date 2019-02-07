@@ -35,7 +35,7 @@ use packed_simd_crate::{u32x4, u64x4};
 use ppv_null::{u32x4, u64x4};
 
 use simd::crypto_simd_new::{RotateEachWord32, RotateEachWord64};
-use simd::{vec128_storage, vec256_storage, IntoVec, Machine, Store, StoreBytes, Words4};
+use simd::{vec128_storage, vec256_storage, Machine, StoreBytes, Words4};
 
 #[inline(always)]
 fn round32<M: Machine>(
@@ -131,8 +131,8 @@ macro_rules! define_compressor {
                             xs = undiagonalize($round::<M>(diagonalize(xs), m0, m1));
                         }
                         let h: (M::$X4, M::$X4) = (mach.unpack(state.h[0]), mach.unpack(state.h[1]));
-                        state.h[0] = (h.0 ^ xs.0 ^ xs.2).pack();
-                        state.h[1] = (h.1 ^ xs.1 ^ xs.3).pack();
+                        state.h[0] = (h.0 ^ xs.0 ^ xs.2).into();
+                        state.h[1] = (h.1 ^ xs.1 ^ xs.3).into();
                     }
                 });
                 put_block(self, block, t);
@@ -187,7 +187,7 @@ macro_rules! define_hasher {
             fn default() -> Self {
                 Self {
                     compressor: $compressor {
-                        h: [$iv[0].into_vec(), $iv[1].into_vec()],
+                        h: [$iv[0].into(), $iv[1].into()],
                     },
                     buffer: BlockBuffer::default(),
                     t: (0, 0),

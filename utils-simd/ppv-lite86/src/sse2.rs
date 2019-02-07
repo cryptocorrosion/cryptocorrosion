@@ -5,7 +5,10 @@ use core::ops::{
 };
 use crate::crypto_simd_new::*;
 use crate::crypto_simd_new_types::*;
-use crate::{vec128_storage, vec256_storage, vec512_storage, NoS3, Store, StoreBytes, YesS3};
+use crate::machine::x86::Machine86;
+use crate::{
+    vec128_storage, vec256_storage, vec512_storage, Machine, NoS3, Store, StoreBytes, YesS3,
+};
 
 macro_rules! impl_binop {
     ($vec:ident, $trait:ident, $fn:ident, $impl_fn:ident) => {
@@ -49,9 +52,11 @@ macro_rules! def_vec {
             unsafe fn unpack(x: vec128_storage) -> Self {
                 Self::new(x.sse2)
             }
+        }
+        impl<S3, S4, NI> From<$vec<S3, S4, NI>> for vec128_storage {
             #[inline(always)]
-            fn pack(self) -> vec128_storage {
-                vec128_storage { sse2: self.x }
+            fn from(x: $vec<S3, S4, NI>) -> Self {
+                vec128_storage { sse2: x.x }
             }
         }
         impl<S3, S4, NI> $vec<S3, S4, NI> {
@@ -309,6 +314,93 @@ def_vec!(u32x4_sse2, u32);
 def_vec!(u64x2_sse2, u64);
 def_vec!(u128x1_sse2, u128);
 
+impl<S3, S4, NI> MultiLane<[u32; 4]> for u32x4_sse2<S3, S4, NI> {
+    #[inline(always)]
+    fn to_lanes(self) -> [u32; 4] {
+        unsafe {
+            [
+                // TODO: no-S4 impl!
+                _mm_cvtsi128_si32(self.x) as u32,
+                _mm_extract_epi32(self.x, 1) as u32,
+                _mm_extract_epi32(self.x, 2) as u32,
+                _mm_extract_epi32(self.x, 3) as u32,
+            ]
+        }
+    }
+    #[inline(always)]
+    fn from_lanes(xs: [u32; 4]) -> Self {
+        unsafe {
+            let mut x = _mm_cvtsi32_si128(xs[0] as i32);
+            x = _mm_insert_epi32(x, xs[1] as i32, 1);
+            x = _mm_insert_epi32(x, xs[2] as i32, 2);
+            x = _mm_insert_epi32(x, xs[3] as i32, 3);
+            Self::new(x)
+        }
+    }
+}
+impl<S3, S4, NI> MultiLane<[u64; 2]> for u64x2_sse2<S3, S4, NI> {
+    #[inline(always)]
+    fn to_lanes(self) -> [u64; 2] {
+        unsafe {
+            [
+                _mm_cvtsi128_si64(self.x) as u64,
+                _mm_extract_epi64(self.x, 1) as u64,
+            ]
+        }
+    }
+    #[inline(always)]
+    fn from_lanes(xs: [u64; 2]) -> Self {
+        unsafe {
+            let mut x = _mm_cvtsi64_si128(xs[0] as i64);
+            x = _mm_insert_epi64(x, xs[1] as i64, 1);
+            Self::new(x)
+        }
+    }
+}
+impl<S3, S4, NI> MultiLane<[u128; 1]> for u128x1_sse2<S3, S4, NI> {
+    #[inline(always)]
+    fn to_lanes(self) -> [u128; 1] {
+        unimplemented!()
+    }
+    #[inline(always)]
+    fn from_lanes(xs: [u128; 1]) -> Self {
+        unimplemented!()
+    }
+}
+
+impl<S3, S4, NI> MultiLane<[u64; 4]> for u64x2x2_sse2<S3, S4, NI>
+where
+    u64x2_sse2<S3, S4, NI>: MultiLane<[u64; 2]> + Copy,
+{
+    #[inline(always)]
+    fn to_lanes(self) -> [u64; 4] {
+        let (a, b) = (self.0[0].to_lanes(), self.0[1].to_lanes());
+        [a[0], a[1], b[0], b[1]]
+    }
+    #[inline(always)]
+    fn from_lanes(xs: [u64; 4]) -> Self {
+        let (a, b) = (
+            u64x2_sse2::from_lanes([xs[0], xs[1]]),
+            u64x2_sse2::from_lanes([xs[2], xs[3]]),
+        );
+        x2([a, b])
+    }
+}
+
+macro_rules! impl_into {
+    ($from:ident, $to:ident) => {
+        impl<S3, S4, NI> From<$from<S3, S4, NI>> for $to<S3, S4, NI> {
+            #[inline(always)]
+            fn from(x: $from<S3, S4, NI>) -> Self {
+                $to::new(x.x)
+            }
+        }
+    };
+}
+
+impl_into!(u128x1_sse2, u32x4_sse2);
+impl_into!(u128x1_sse2, u64x2_sse2);
+
 impl_bitops32!(u32x4_sse2);
 impl_bitops64!(u64x2_sse2);
 impl_bitops128!(u128x1_sse2);
@@ -324,14 +416,22 @@ impl_binop!(u64x2_sse2, Add, add, _mm_add_epi64);
 impl_binop_assign!(u32x4_sse2, AddAssign, add_assign, add);
 impl_binop_assign!(u64x2_sse2, AddAssign, add_assign, add);
 
-impl<S3: Copy, S4: Copy, NI: Copy> u32x4 for u32x4_sse2<S3, S4, NI> where
-    u32x4_sse2<S3, S4, NI>: RotateEachWord32 + BSwap
+impl<S3: Copy, S4: Copy, NI: Copy> u32x4<Machine86<S3, S4, NI>> for u32x4_sse2<S3, S4, NI>
+where
+    u32x4_sse2<S3, S4, NI>: RotateEachWord32 + BSwap,
+    Machine86<S3, S4, NI>: Machine,
 {}
-impl<S3: Copy, S4: Copy, NI: Copy> u64x2 for u64x2_sse2<S3, S4, NI> where
-    u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap
+impl<S3: Copy, S4: Copy, NI: Copy> u64x2<Machine86<S3, S4, NI>> for u64x2_sse2<S3, S4, NI>
+where
+    u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap,
+    Machine86<S3, S4, NI>: Machine,
 {}
-impl<S3: Copy, S4: Copy, NI: Copy> u128x1 for u128x1_sse2<S3, S4, NI> where
-    u128x1_sse2<S3, S4, NI>: Swap64 + RotateEachWord64 + RotateEachWord32 + BSwap
+impl<S3: Copy, S4: Copy, NI: Copy> u128x1<Machine86<S3, S4, NI>> for u128x1_sse2<S3, S4, NI>
+where
+    u128x1_sse2<S3, S4, NI>: Swap64 + RotateEachWord64 + RotateEachWord32 + BSwap,
+    Machine86<S3, S4, NI>: Machine,
+    u128x1_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u32x4>,
+    u128x1_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u64x2>,
 {}
 
 impl<S3, S4, NI> UnsafeFrom<[u32; 4]> for u32x4_sse2<S3, S4, NI> {
@@ -697,10 +797,16 @@ impl<W: Copy + Store<vec128_storage>> Store<vec256_storage> for x2<W> {
     unsafe fn unpack(p: vec256_storage) -> Self {
         x2([W::unpack(p.sse2[0]), W::unpack(p.sse2[1])])
     }
+}
+impl<W> From<x2<W>> for vec256_storage
+where
+    W: Copy,
+    vec128_storage: From<W>,
+{
     #[inline(always)]
-    fn pack(self) -> vec256_storage {
+    fn from(x: x2<W>) -> Self {
         vec256_storage {
-            sse2: [self.0[0].pack(), self.0[1].pack()],
+            sse2: [x.0[0].into(), x.0[1].into()],
         }
     }
 }
@@ -867,15 +973,16 @@ impl<W: Copy + Store<vec128_storage>> Store<vec512_storage> for x4<W> {
             W::unpack(p.sse2[3]),
         ])
     }
+}
+impl<W> From<x4<W>> for vec512_storage
+where
+    W: Copy,
+    vec128_storage: From<W>,
+{
     #[inline(always)]
-    fn pack(self) -> vec512_storage {
+    fn from(x: x4<W>) -> Self {
         vec512_storage {
-            sse2: [
-                self.0[0].pack(),
-                self.0[1].pack(),
-                self.0[2].pack(),
-                self.0[3].pack(),
-            ],
+            sse2: [x.0[0].into(), x.0[1].into(), x.0[2].into(), x.0[3].into()],
         }
     }
 }
@@ -983,25 +1090,77 @@ pub type u64x2x4_sse2<S3, S4, NI> = x4<u64x2_sse2<S3, S4, NI>>;
 #[allow(non_camel_case_types)]
 pub type u128x4_sse2<S3, S4, NI> = x4<u128x1_sse2<S3, S4, NI>>;
 
-impl<S3: Copy, S4: Copy, NI: Copy> u32x4x2<u32x4_sse2<S3, S4, NI>> for u32x4x2_sse2<S3, S4, NI> where
-    u32x4_sse2<S3, S4, NI>: RotateEachWord32 + BSwap
+impl<S3: Copy, S4: Copy, NI: Copy> u32x4x2<Machine86<S3, S4, NI>> for u32x4x2_sse2<S3, S4, NI>
+where
+    u32x4_sse2<S3, S4, NI>: RotateEachWord32 + BSwap,
+    Machine86<S3, S4, NI>: Machine,
+    u32x4x2_sse2<S3, S4, NI>: MultiLane<[<Machine86<S3, S4, NI> as Machine>::u32x4; 2]>,
+    u32x4x2_sse2<S3, S4, NI>: Vec2<<Machine86<S3, S4, NI> as Machine>::u32x4>,
 {}
-impl<S3: Copy, S4: Copy, NI: Copy> u64x2x2<u64x2_sse2<S3, S4, NI>> for u64x2x2_sse2<S3, S4, NI> where
-    u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap
+impl<S3: Copy, S4: Copy, NI: Copy> u64x2x2<Machine86<S3, S4, NI>> for u64x2x2_sse2<S3, S4, NI>
+where
+    u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap,
+    Machine86<S3, S4, NI>: Machine,
+    u64x2x2_sse2<S3, S4, NI>: MultiLane<[<Machine86<S3, S4, NI> as Machine>::u64x2; 2]>,
+    u64x2x2_sse2<S3, S4, NI>: Vec2<<Machine86<S3, S4, NI> as Machine>::u64x2>,
 {}
-impl<S3: Copy, S4: Copy, NI: Copy> u128x2<u128x1_sse2<S3, S4, NI>> for u128x2_sse2<S3, S4, NI> where
-    u128x1_sse2<S3, S4, NI>: Swap64 + BSwap
+impl<S3: Copy, S4: Copy, NI: Copy> u128x2<Machine86<S3, S4, NI>> for u128x2_sse2<S3, S4, NI>
+where
+    u128x1_sse2<S3, S4, NI>: Swap64 + BSwap,
+    Machine86<S3, S4, NI>: Machine,
+    u128x2_sse2<S3, S4, NI>: MultiLane<[<Machine86<S3, S4, NI> as Machine>::u128x1; 2]>,
+    u128x2_sse2<S3, S4, NI>: Vec2<<Machine86<S3, S4, NI> as Machine>::u128x1>,
+    u128x2_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u32x4x2>,
+    u128x2_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u64x2x2>,
 {}
 
-impl<S3: Copy, S4: Copy, NI: Copy> u32x4x4<u32x4_sse2<S3, S4, NI>> for u32x4x4_sse2<S3, S4, NI> where
-    u32x4_sse2<S3, S4, NI>: RotateEachWord32 + BSwap
+impl<S3: Copy, S4: Copy, NI: Copy> u32x4x4<Machine86<S3, S4, NI>> for u32x4x4_sse2<S3, S4, NI>
+where
+    u32x4_sse2<S3, S4, NI>: RotateEachWord32 + BSwap,
+    Machine86<S3, S4, NI>: Machine,
+    u32x4x4_sse2<S3, S4, NI>: MultiLane<[<Machine86<S3, S4, NI> as Machine>::u32x4; 4]>,
+    u32x4x4_sse2<S3, S4, NI>: Vec4<<Machine86<S3, S4, NI> as Machine>::u32x4>,
 {}
-impl<S3: Copy, S4: Copy, NI: Copy> u64x2x4<u64x2_sse2<S3, S4, NI>> for u64x2x4_sse2<S3, S4, NI> where
-    u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap
+impl<S3: Copy, S4: Copy, NI: Copy> u64x2x4<Machine86<S3, S4, NI>> for u64x2x4_sse2<S3, S4, NI>
+where
+    u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap,
+    Machine86<S3, S4, NI>: Machine,
+    u64x2x4_sse2<S3, S4, NI>: MultiLane<[<Machine86<S3, S4, NI> as Machine>::u64x2; 4]>,
+    u64x2x4_sse2<S3, S4, NI>: Vec4<<Machine86<S3, S4, NI> as Machine>::u64x2>,
 {}
-impl<S3: Copy, S4: Copy, NI: Copy> u128x4<u128x1_sse2<S3, S4, NI>> for u128x4_sse2<S3, S4, NI> where
-    u128x1_sse2<S3, S4, NI>: Swap64 + BSwap
+impl<S3: Copy, S4: Copy, NI: Copy> u128x4<Machine86<S3, S4, NI>> for u128x4_sse2<S3, S4, NI>
+where
+    u128x1_sse2<S3, S4, NI>: Swap64 + BSwap,
+    Machine86<S3, S4, NI>: Machine,
+    u128x4_sse2<S3, S4, NI>: MultiLane<[<Machine86<S3, S4, NI> as Machine>::u128x1; 4]>,
+    u128x4_sse2<S3, S4, NI>: Vec4<<Machine86<S3, S4, NI> as Machine>::u128x1>,
+    u128x4_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u32x4x4>,
+    u128x4_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u64x2x4>,
 {}
+
+macro_rules! impl_into_x {
+    ($from:ident, $to:ident) => {
+        impl<S3: Copy, S4: Copy, NI: Copy> From<x2<$from<S3, S4, NI>>> for x2<$to<S3, S4, NI>> {
+            #[inline(always)]
+            fn from(x: x2<$from<S3, S4, NI>>) -> Self {
+                x2([$to::from(x.0[0]), $to::from(x.0[1])])
+            }
+        }
+        impl<S3: Copy, S4: Copy, NI: Copy> From<x4<$from<S3, S4, NI>>> for x4<$to<S3, S4, NI>> {
+            #[inline(always)]
+            fn from(x: x4<$from<S3, S4, NI>>) -> Self {
+                x4([
+                    $to::from(x.0[0]),
+                    $to::from(x.0[1]),
+                    $to::from(x.0[2]),
+                    $to::from(x.0[3]),
+                ])
+            }
+        }
+    };
+}
+impl_into_x!(u128x1_sse2, u64x2_sse2);
+impl_into_x!(u128x1_sse2, u32x4_sse2);
 
 ///// Debugging
 
@@ -1021,18 +1180,13 @@ impl<S3, S4, NI> PartialEq for u32x4_sse2<S3, S4, NI> {
         unsafe { eq128_s2(self.x, rhs.x) }
     }
 }
-impl<S3, S4, NI> Debug for u32x4_sse2<S3, S4, NI> {
+impl<S3, S4, NI> Debug for u32x4_sse2<S3, S4, NI>
+where
+    Self: Copy,
+{
     #[cold]
     fn fmt(&self, fmt: &mut Formatter) -> Result {
-        unsafe {
-            let xs = [
-                _mm_cvtsi128_si32(self.x),
-                _mm_extract_epi32(self.x, 1),
-                _mm_extract_epi32(self.x, 2),
-                _mm_extract_epi32(self.x, 3),
-            ];
-            fmt.write_fmt(format_args!("{:08x?}", &xs))
-        }
+        fmt.write_fmt(format_args!("{:08x?}", &self.to_lanes()))
     }
 }
 
@@ -1042,13 +1196,13 @@ impl<S3, S4, NI> PartialEq for u64x2_sse2<S3, S4, NI> {
         unsafe { eq128_s2(self.x, rhs.x) }
     }
 }
-impl<S3, S4, NI> Debug for u64x2_sse2<S3, S4, NI> {
+impl<S3, S4, NI> Debug for u64x2_sse2<S3, S4, NI>
+where
+    Self: Copy,
+{
     #[cold]
     fn fmt(&self, fmt: &mut Formatter) -> Result {
-        unsafe {
-            let xs = [_mm_cvtsi128_si64(self.x), _mm_extract_epi64(self.x, 1)];
-            fmt.write_fmt(format_args!("{:016x?}", &xs))
-        }
+        fmt.write_fmt(format_args!("{:016x?}", &self.to_lanes()))
     }
 }
 
@@ -1064,18 +1218,21 @@ mod test {
         let xs = [0x0f0e_0d0c, 0x0b0a_0908, 0x0706_0504, 0x0302_0100];
         let ys = [0x0c0d_0e0f, 0x0809_0a0b, 0x0405_0607, 0x0001_0203];
 
+        let s2 = unsafe { SSE2::instance() };
+        let s3 = unsafe { SSSE3::instance() };
+
         let x_s2 = {
-            let x_s2: <SSE2 as Machine>::u32x4 = SSE2.vec(xs);
+            let x_s2: <SSE2 as Machine>::u32x4 = s2.vec(xs);
             x_s2.bswap()
         };
 
         let x_s3 = {
-            let x_s3: <SSSE3 as Machine>::u32x4 = SSSE3.vec(xs);
+            let x_s3: <SSSE3 as Machine>::u32x4 = s3.vec(xs);
             x_s3.bswap()
         };
 
         assert_eq!(x_s2, unsafe { core::mem::transmute(x_s3) });
-        assert_eq!(x_s2, SSE2.vec(ys));
+        assert_eq!(x_s2, s2.vec(ys));
     }
 
     #[test]
@@ -1084,17 +1241,20 @@ mod test {
         let xs = [0x0f0e_0d0c_0b0a_0908, 0x0706_0504_0302_0100];
         let ys = [0x0809_0a0b_0c0d_0e0f, 0x0001_0203_0405_0607];
 
+        let s2 = unsafe { SSE2::instance() };
+        let s3 = unsafe { SSSE3::instance() };
+
         let x_s2 = {
-            let x_s2: <SSE2 as Machine>::u64x2 = SSE2.vec(xs);
+            let x_s2: <SSE2 as Machine>::u64x2 = s2.vec(xs);
             x_s2.bswap()
         };
 
         let x_s3 = {
-            let x_s3: <SSSE3 as Machine>::u64x2 = SSSE3.vec(xs);
+            let x_s3: <SSSE3 as Machine>::u64x2 = s3.vec(xs);
             x_s3.bswap()
         };
 
-        assert_eq!(x_s2, SSE2.vec(ys));
+        assert_eq!(x_s2, s2.vec(ys));
         assert_eq!(x_s3, unsafe { core::mem::transmute(x_s3) });
     }
 }

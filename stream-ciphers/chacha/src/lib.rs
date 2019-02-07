@@ -62,9 +62,7 @@ use stream_cipher::generic_array::typenum::{Unsigned, U10, U12, U24, U32, U4, U6
 use stream_cipher::generic_array::{ArrayLength, GenericArray};
 use stream_cipher::{LoopError, NewStreamCipher, SyncStreamCipher, SyncStreamCipherSeek};
 
-use simd::{
-    vec128_storage, ArithOps, BitOps32, LaneWords4, MultiLane, Store, StoreBytes, Vec2, Vec4,
-};
+use simd::{vec128_storage, ArithOps, BitOps32, LaneWords4, MultiLane, StoreBytes, Vec2, Vec4};
 
 const BLOCK: usize = 64;
 const BLOCK64: u64 = BLOCK as u64;
@@ -120,14 +118,14 @@ impl ChaCha {
     fn seek64<M: Machine>(&mut self, m: M, blockct: u64) {
         // x86 is little-endian
         let d: M::u64x2 = m.unpack(self.d);
-        self.d = d.insert(blockct, 0).pack();
+        self.d = d.insert(blockct, 0).into();
     }
 
     /// Set 32-bit block count, affecting next refill.
     #[inline(always)]
     fn seek32<M: Machine>(&mut self, m: M, blockct: u32) {
         let d: M::u32x4 = m.unpack(self.d);
-        self.d = d.insert(blockct, 0).pack();
+        self.d = d.insert(blockct, 0).into();
     }
 
     /// Produce output from the current state.
@@ -144,7 +142,7 @@ impl ChaCha {
     #[inline(always)]
     fn inc_block_ct<M: Machine>(&mut self, m: M) {
         let d0: M::u64x2 = m.unpack(self.d);
-        self.d = (d0 + m.vec([1, 0])).pack();
+        self.d = (d0 + m.vec([1, 0])).into();
     }
 }
 
@@ -163,7 +161,7 @@ dispatch_light128!(m, Mach, {
             a: Mach::u32x4x4::from_lanes([k, k, k, k]),
             b: Mach::u32x4x4::from_lanes([b, b, b, b]),
             c: Mach::u32x4x4::from_lanes([c, c, c, c]),
-            d: m.unpack(Mach::u64x2x4::from_lanes([d0, d1, d2, d3]).pack()),
+            d: m.unpack(Mach::u64x2x4::from_lanes([d0, d1, d2, d3]).into()),
         };
         for _ in 0..drounds {
             x = round(x);
@@ -175,9 +173,9 @@ dispatch_light128!(m, Mach, {
         let d2 = d1 + inc;
         let d3 = d2 + inc;
         let d4 = d3 + inc;
-        let d1: Mach::u32x4 = m.unpack(d1.pack());
-        let d2: Mach::u32x4 = m.unpack(d2.pack());
-        let d3: Mach::u32x4 = m.unpack(d3.pack());
+        let d1: Mach::u32x4 = m.unpack(d1.into());
+        let d2: Mach::u32x4 = m.unpack(d2.into());
+        let d3: Mach::u32x4 = m.unpack(d3.into());
         let (a, b, c, d) = (
             x.a.to_lanes(),
             x.b.to_lanes(),
@@ -187,7 +185,7 @@ dispatch_light128!(m, Mach, {
         let sb = m.unpack(state.b);
         let sc = m.unpack(state.c);
         let sd = [m.unpack(state.d), d1, d2, d3];
-        state.d = d4.pack();
+        state.d = d4.into();
         let mut words = out.chunks_exact_mut(16);
         for ((((&a, &b), &c), &d), &sd) in a.iter().zip(&b).zip(&c).zip(&d).zip(&sd) {
             (a + k).write_le(words.next().unwrap());
@@ -229,10 +227,10 @@ dispatch_light128!(m, Mach, {
             x = undiagonalize(round(diagonalize(x)));
         }
         State {
-            a: x.a.pack(),
-            b: x.b.pack(),
-            c: x.c.pack(),
-            d: x.d.pack(),
+            a: x.a.into(),
+            b: x.b.into(),
+            c: x.c.into(),
+            d: x.d.into(),
         }
     }
 });
@@ -372,7 +370,7 @@ impl<NonceSize, Rounds: Unsigned, IsX> ChaChaAny<NonceSize, Rounds, IsX> {
 
 dispatch_light128!(m, Mach, {
     fn init_chacha(key: &GenericArray<u8, U32>, nonce: &[u8]) -> ChaCha {
-        let ctr_nonce = m.vec([
+        let ctr_nonce = [
             0,
             if nonce.len() == 12 {
                 LE::read_u32(&nonce[0..4])
@@ -381,13 +379,13 @@ dispatch_light128!(m, Mach, {
             },
             LE::read_u32(&nonce[nonce.len() - 8..nonce.len() - 4]),
             LE::read_u32(&nonce[nonce.len() - 4..]),
-        ]);
+        ];
         let key0: Mach::u32x4 = m.read_le(&key[..16]);
         let key1: Mach::u32x4 = m.read_le(&key[16..]);
         ChaCha {
-            b: key0.pack(),
-            c: key1.pack(),
-            d: ctr_nonce,
+            b: key0.into(),
+            c: key1.into(),
+            d: ctr_nonce.into(),
         }
     }
 });
@@ -430,20 +428,20 @@ dispatch_light128!(m, Mach, {
         let key1: Mach::u32x4 = m.read_le(&key[16..]);
         let nonce0: Mach::u32x4 = m.read_le(&nonce[..16]);
         let mut state = ChaCha {
-            b: key0.pack(),
-            c: key1.pack(),
-            d: nonce0.pack(),
+            b: key0.into(),
+            c: key1.into(),
+            d: nonce0.into(),
         };
         let x = refill_narrow_rounds(&mut state, rounds);
-        let ctr_nonce1 = m.vec([
+        let ctr_nonce1 = [
             0,
             0,
             LE::read_u32(&nonce[16..20]),
             LE::read_u32(&nonce[20..24]),
-        ]);
+        ];
         state.b = x.a;
         state.c = x.d;
-        state.d = ctr_nonce1;
+        state.d = ctr_nonce1.into();
         state
     }
 });
