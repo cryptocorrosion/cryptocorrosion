@@ -45,6 +45,7 @@ extern crate packed_simd_crate;
 #[cfg(not(any(feature = "simd", feature = "packed_simd")))]
 extern crate ppv_null;
 #[cfg(all(feature = "simd", not(feature = "packed_simd")))]
+#[macro_use]
 extern crate simd;
 #[cfg(feature = "packed_simd")]
 use crypto_simd::packed_simd::u32x4x4;
@@ -62,8 +63,7 @@ use stream_cipher::generic_array::{ArrayLength, GenericArray};
 use stream_cipher::{LoopError, NewStreamCipher, SyncStreamCipher, SyncStreamCipherSeek};
 
 use simd::{
-    machine, vec128_storage, ArithOps, BitOps32, LaneWords4, MultiLane, Store, StoreBytes, Vec2,
-    Vec4,
+    vec128_storage, ArithOps, BitOps32, LaneWords4, MultiLane, Store, StoreBytes, Vec2, Vec4,
 };
 
 const BLOCK: usize = 64;
@@ -114,174 +114,20 @@ pub fn undiagonalize<V: LaneWords4>(mut x: State<V>) -> State<V> {
     x
 }
 
-macro_rules! impl_dispatch {
-        ($fn:ident, $fn_impl:ident, $width:expr, $ret:ty) => {
-    /// Fill a new buffer from the state, autoincrementing internal block count. Caller must count
-    /// blocks to ensure this doesn't wrap a 32/64 bit counter, as appropriate.
-    #[cfg(not(all(
-        feature = "std",
-        target_arch = "x86_64",
-        any(feature = "simd", feature = "packed_simd")
-    )))]
-    fn $fn(&mut self, drounds: u32, words: &mut [u8; $width]) -> $ret {
-        self.$fn_impl(drounds, words)
-    }
-
-    /// Fill a new buffer from the state, autoincrementing internal block count. Caller must count
-    /// blocks to ensure this doesn't wrap a 32/64 bit counter, as appropriate.
-    #[cfg(all(
-        feature = "std",
-        target_arch = "x86_64",
-        any(feature = "simd", feature = "packed_simd")
-    ))]
-    fn $fn(&mut self, drounds: u32, words: &mut [u8; $width]) -> $ret {
-        type Refill = unsafe fn(state: &mut ChaCha, drounds: u32, words: &mut [u8; $width]) -> $ret;
-        lazy_static! {
-            static ref IMPL: Refill = { dispatch_init() };
-        }
-        fn dispatch_init() -> Refill {
-            use simd::machine::x86::*;
-            /*if is_x86_feature_detected!("avx2") {
-                // wide issue
-                #[target_feature(enable = "avx2")]
-                unsafe fn refill_avx2(
-                    state: &mut ChaCha,
-                    drounds: u32,
-                    words: &mut [u8; $width],
-                ) {
-                    ChaCha::$fn_impl(state, AVX2, drounds, words);
-                }
-                refill_avx2
-            } else */if is_x86_feature_detected!("sse4.1") {
-                #[target_feature(enable = "sse4.1")]
-                unsafe fn refill_sse4(
-                    state: &mut ChaCha,
-                    drounds: u32,
-                    words: &mut [u8; $width],
-                ) -> $ret {
-                    ChaCha::$fn_impl(state, SSE41, drounds, words)
-                }
-                refill_sse4
-            } else if is_x86_feature_detected!("ssse3") {
-                // faster rotates
-                #[target_feature(enable = "ssse3")]
-                unsafe fn refill_ssse3(
-                    state: &mut ChaCha,
-                    drounds: u32,
-                    words: &mut [u8; $width],
-                ) -> $ret {
-                    ChaCha::$fn_impl(state, SSSE3, drounds, words)
-                }
-                refill_ssse3
-            } else {
-                // fallback
-                unsafe fn refill_fallback(
-                    state: &mut ChaCha,
-                    drounds: u32,
-                    words: &mut [u8; $width],
-                ) -> $ret {
-                    ChaCha::$fn_impl(state, SSE2, drounds, words)
-                }
-                refill_fallback
-            }
-        }
-        unsafe { IMPL(self, drounds, words) }
-    }
-}}
-
 impl ChaCha {
-    /// Set 32-bit block count, affecting next refill.
-    #[inline(always)]
-    fn seek32(&mut self, blockct: u32) {
-        let m = machine::x86::SSE2;
-        let d: <machine::x86::SSE2 as Machine>::u32x4 = m.unpack(self.d);
-        self.d = d.insert(blockct, 0).pack();
-    }
-
     /// Set 64-bit block count, affecting next refill.
     #[inline(always)]
-    fn seek64(&mut self, blockct: u64) {
-        let m = machine::x86::SSE2;
+    fn seek64<M: Machine>(&mut self, m: M, blockct: u64) {
         // x86 is little-endian
-        let d: <machine::x86::SSE2 as Machine>::u64x2 = m.unpack(self.d);
+        let d: M::u64x2 = m.unpack(self.d);
         self.d = d.insert(blockct, 0).pack();
     }
 
+    /// Set 32-bit block count, affecting next refill.
     #[inline(always)]
-    fn refill_wide_impl<M: Machine>(&mut self, m: M, drounds: u32, out: &mut [u8; BUFSZ]) {
-        let k = m.vec([0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574]);
-        // TODO: endian
-        let inc = m.vec([1, 0]);
-        let d0: M::u64x2 = m.unpack(self.d);
-        let d1 = d0 + inc;
-        let d2 = d1 + inc;
-        let d3 = d2 + inc;
-        let b = m.unpack(self.b);
-        let c = m.unpack(self.c);
-        let mut x = State {
-            a: M::u32x4x4::from_lanes([k, k, k, k]),
-            b: M::u32x4x4::from_lanes([b, b, b, b]),
-            c: M::u32x4x4::from_lanes([c, c, c, c]),
-            d: m.unpack(M::u64x2x4::from_lanes([d0, d1, d2, d3]).pack()),
-        };
-        for _ in 0..drounds {
-            x = round(x);
-            x = undiagonalize(round(diagonalize(x)));
-        }
-        let inc = m.vec([1, 0]);
-        let d0: M::u64x2 = m.unpack(self.d);
-        let d1 = d0 + inc;
-        let d2 = d1 + inc;
-        let d3 = d2 + inc;
-        let d4 = d3 + inc;
-        let d1: M::u32x4 = m.unpack(d1.pack());
-        let d2: M::u32x4 = m.unpack(d2.pack());
-        let d3: M::u32x4 = m.unpack(d3.pack());
-        let (a, b, c, d) = (
-            x.a.to_lanes(),
-            x.b.to_lanes(),
-            x.c.to_lanes(),
-            x.d.to_lanes(),
-        );
-        let sb = m.unpack(self.b);
-        let sc = m.unpack(self.c);
-        let sd = [m.unpack(self.d), d1, d2, d3];
-        self.d = d4.pack();
-        let mut words = out.chunks_exact_mut(16);
-        for ((((&a, &b), &c), &d), &sd) in a.iter().zip(&b).zip(&c).zip(&d).zip(&sd) {
-            (a + k).write_le(words.next().unwrap());
-            (b + sb).write_le(words.next().unwrap());
-            (c + sc).write_le(words.next().unwrap());
-            (d + sd).write_le(words.next().unwrap());
-        }
-    }
-
-    /// Single-block, rounds-only; shared by try_apply_keystream for tails shorter than BUFSZ
-    /// and XChaCha's setup step.
-    #[inline(always)]
-    fn refill_narrow_rounds_impl<M: Machine>(
-        &mut self,
-        m: M,
-        drounds: u32,
-        _: &mut [u8; 0],
-    ) -> State<vec128_storage> {
-        let k: M::u32x4 = m.vec([0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574]);
-        let mut x = State {
-            a: k,
-            b: m.unpack(self.b),
-            c: m.unpack(self.c),
-            d: m.unpack(self.d),
-        };
-        for _ in 0..drounds {
-            x = round(x);
-            x = undiagonalize(round(diagonalize(x)));
-        }
-        State {
-            a: x.a.pack(),
-            b: x.b.pack(),
-            c: x.c.pack(),
-            d: x.d.pack(),
-        }
+    fn seek32<M: Machine>(&mut self, m: M, blockct: u32) {
+        let d: M::u32x4 = m.unpack(self.d);
+        self.d = d.insert(blockct, 0).pack();
     }
 
     /// Produce output from the current state.
@@ -296,35 +142,100 @@ impl ChaCha {
 
     /// Add one to the block counter (no overflow check).
     #[inline(always)]
-    fn inc_block_ct(&mut self) {
-        let m = machine::x86::SSE2;
-        let d0: <machine::x86::SSE2 as Machine>::u64x2 = m.unpack(self.d);
+    fn inc_block_ct<M: Machine>(&mut self, m: M) {
+        let d0: M::u64x2 = m.unpack(self.d);
         self.d = (d0 + m.vec([1, 0])).pack();
     }
+}
 
-    impl_dispatch!(refill_wide, refill_wide_impl, BUFSZ, ());
-    impl_dispatch!(
-        refill_narrow_rounds,
-        refill_narrow_rounds_impl,
-        0,
-        State<vec128_storage>
-    );
+dispatch_light128!(m, Mach, {
+    fn refill_wide(state: &mut ChaCha, drounds: u32, out: &mut [u8; BUFSZ]) {
+        let k = m.vec([0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574]);
+        // TODO: endian
+        let inc = m.vec([1, 0]);
+        let d0: Mach::u64x2 = m.unpack(state.d);
+        let d1 = d0 + inc;
+        let d2 = d1 + inc;
+        let d3 = d2 + inc;
+        let b = m.unpack(state.b);
+        let c = m.unpack(state.c);
+        let mut x = State {
+            a: Mach::u32x4x4::from_lanes([k, k, k, k]),
+            b: Mach::u32x4x4::from_lanes([b, b, b, b]),
+            c: Mach::u32x4x4::from_lanes([c, c, c, c]),
+            d: m.unpack(Mach::u64x2x4::from_lanes([d0, d1, d2, d3]).pack()),
+        };
+        for _ in 0..drounds {
+            x = round(x);
+            x = undiagonalize(round(diagonalize(x)));
+        }
+        let inc = m.vec([1, 0]);
+        let d0: Mach::u64x2 = m.unpack(state.d);
+        let d1 = d0 + inc;
+        let d2 = d1 + inc;
+        let d3 = d2 + inc;
+        let d4 = d3 + inc;
+        let d1: Mach::u32x4 = m.unpack(d1.pack());
+        let d2: Mach::u32x4 = m.unpack(d2.pack());
+        let d3: Mach::u32x4 = m.unpack(d3.pack());
+        let (a, b, c, d) = (
+            x.a.to_lanes(),
+            x.b.to_lanes(),
+            x.c.to_lanes(),
+            x.d.to_lanes(),
+        );
+        let sb = m.unpack(state.b);
+        let sc = m.unpack(state.c);
+        let sd = [m.unpack(state.d), d1, d2, d3];
+        state.d = d4.pack();
+        let mut words = out.chunks_exact_mut(16);
+        for ((((&a, &b), &c), &d), &sd) in a.iter().zip(&b).zip(&c).zip(&d).zip(&sd) {
+            (a + k).write_le(words.next().unwrap());
+            (b + sb).write_le(words.next().unwrap());
+            (c + sc).write_le(words.next().unwrap());
+            (d + sd).write_le(words.next().unwrap());
+        }
+    }
+});
 
-    /// Refill the buffer from a single-block round, updating the block count.
-    #[inline(always)]
-    fn refill_narrow(&mut self, drounds: u32, out: &mut [u8; BLOCK]) {
-        let x = self.refill_narrow_rounds(drounds, &mut []);
-        let m = machine::x86::SSE2;
+/// Refill the buffer from a single-block round, updating the block count.
+dispatch_light128!(m, Mach, {
+    fn refill_narrow(state: &mut ChaCha, drounds: u32, out: &mut [u8; BLOCK]) {
+        let x = refill_narrow_rounds(state, drounds);
         let x = State {
             a: m.unpack(x.a),
             b: m.unpack(x.b),
             c: m.unpack(x.c),
             d: m.unpack(x.d),
         };
-        self.output_narrow(m, x, out);
-        self.inc_block_ct();
+        state.output_narrow(m, x, out);
+        state.inc_block_ct(m);
     }
-}
+});
+
+/// Single-block, rounds-only; shared by try_apply_keystream for tails shorter than BUFSZ
+/// and XChaCha's setup step.
+dispatch_light128!(m, Mach, {
+    fn refill_narrow_rounds(state: &mut ChaCha, drounds: u32) -> State<vec128_storage> {
+        let k: Mach::u32x4 = m.vec([0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574]);
+        let mut x = State {
+            a: k,
+            b: m.unpack(state.b),
+            c: m.unpack(state.c),
+            d: m.unpack(state.d),
+        };
+        for _ in 0..drounds {
+            x = round(x);
+            x = undiagonalize(round(diagonalize(x)));
+        }
+        State {
+            a: x.a.pack(),
+            b: x.b.pack(),
+            c: x.c.pack(),
+            d: x.d.pack(),
+        }
+    }
+});
 
 mod chacha_any {
     use super::*;
@@ -382,7 +293,7 @@ impl Buffer {
         // We can do this before the overflow check because this is not an effect of the current
         // operation.
         if self.have < 0 {
-            self.state.refill_narrow(drounds, &mut self.out);
+            refill_narrow(&mut self.state, drounds, &mut self.out);
             self.have += BLOCK as i8;
             // checked in seek()
             self.len -= 1;
@@ -411,7 +322,7 @@ impl Buffer {
             let (d0, d1) = data.split_at_mut(data.len() & !(BUFSZ - 1));
             for dd in d0.chunks_exact_mut(BUFSZ) {
                 let mut buf = [0; BUFSZ];
-                self.state.refill_wide(drounds, &mut buf);
+                refill_wide(&mut self.state, drounds, &mut buf);
                 for (data_b, key_b) in dd.iter_mut().zip(buf.iter()) {
                     *data_b ^= *key_b;
                 }
@@ -420,7 +331,7 @@ impl Buffer {
         }
         // Handle the tail a block at a time so we'll have storage for any leftovers.
         for dd in data.chunks_mut(BLOCK) {
-            self.state.refill_narrow(drounds, &mut self.out);
+            refill_narrow(&mut self.state, drounds, &mut self.out);
             for (data_b, key_b) in dd.iter_mut().zip(self.out.iter()) {
                 *data_b ^= *key_b;
             }
@@ -431,6 +342,26 @@ impl Buffer {
     }
 }
 
+dispatch_light128!(m, Mach, {
+    fn seek64(buf: &mut Buffer, ct: u64) {
+        let blockct = ct / BLOCK64;
+        buf.len = BIG_LEN.wrapping_sub(blockct);
+        buf.fresh = blockct == 0;
+        buf.have = -((ct % BLOCK64) as i8);
+        buf.state.seek64(m, blockct);
+    }
+});
+
+dispatch_light128!(m, Mach, {
+    fn seek32(buf: &mut Buffer, ct: u64) {
+        let blockct = ct / BLOCK64;
+        assert!(blockct < SMALL_LEN || (blockct == SMALL_LEN && ct % BLOCK64 == 0));
+        buf.len = SMALL_LEN - blockct;
+        buf.have = -((ct % BLOCK64) as i8);
+        buf.state.seek32(m, blockct as u32);
+    }
+});
+
 #[cfg(test)]
 impl<NonceSize, Rounds: Unsigned, IsX> ChaChaAny<NonceSize, Rounds, IsX> {
     pub fn try_apply_keystream_narrow(&mut self, data: &mut [u8]) -> Result<(), LoopError> {
@@ -438,6 +369,28 @@ impl<NonceSize, Rounds: Unsigned, IsX> ChaChaAny<NonceSize, Rounds, IsX> {
             .try_apply_keystream::<WideDisabled>(data, Rounds::U32)
     }
 }
+
+dispatch_light128!(m, Mach, {
+    fn init_chacha(key: &GenericArray<u8, U32>, nonce: &[u8]) -> ChaCha {
+        let ctr_nonce = m.vec([
+            0,
+            if nonce.len() == 12 {
+                LE::read_u32(&nonce[0..4])
+            } else {
+                0
+            },
+            LE::read_u32(&nonce[nonce.len() - 8..nonce.len() - 4]),
+            LE::read_u32(&nonce[nonce.len() - 4..]),
+        ]);
+        let key0: Mach::u32x4 = m.read_le(&key[..16]);
+        let key1: Mach::u32x4 = m.read_le(&key[16..]);
+        ChaCha {
+            b: key0.pack(),
+            c: key1.pack(),
+            d: ctr_nonce,
+        }
+    }
+});
 
 impl<NonceSize, Rounds> NewStreamCipher for ChaChaAny<NonceSize, Rounds, O>
 where
@@ -451,36 +404,14 @@ where
         key: &GenericArray<u8, Self::KeySize>,
         nonce: &GenericArray<u8, Self::NonceSize>,
     ) -> Self {
-        use machine::x86::SSE2;
-        let m = SSE2;
-        let ctr_nonce = m.vec([
-            0,
-            if NonceSize::U32 == 12 {
-                LE::read_u32(&nonce[0..4])
-            } else {
-                0
-            },
-            LE::read_u32(&nonce[NonceSize::USIZE - 8..NonceSize::USIZE - 4]),
-            LE::read_u32(&nonce[NonceSize::USIZE - 4..NonceSize::USIZE]),
-        ]);
-        let key0: <SSE2 as Machine>::u32x4 = m.read_le(&key[..16]);
-        let key1: <SSE2 as Machine>::u32x4 = m.read_le(&key[16..]);
-        let state = ChaCha {
-            b: key0.pack(),
-            c: key1.pack(),
-            d: ctr_nonce,
-        };
+        let nonce_len = nonce.len();
         ChaChaAny {
             state: Buffer {
-                state,
+                state: init_chacha(key, nonce),
                 out: [0; BLOCK],
                 have: 0,
-                len: if NonceSize::U32 == 12 {
-                    SMALL_LEN
-                } else {
-                    BIG_LEN
-                },
-                fresh: NonceSize::U32 != 12,
+                len: if nonce_len == 12 { SMALL_LEN } else { BIG_LEN },
+                fresh: nonce_len != 12,
             },
             _nonce_size: Default::default(),
             _rounds: Default::default(),
@@ -489,24 +420,21 @@ where
     }
 }
 
-impl<Rounds: Unsigned + Default> NewStreamCipher for ChaChaAny<U24, Rounds, X> {
-    type KeySize = U32;
-    type NonceSize = U24;
-    fn new(
-        key: &GenericArray<u8, Self::KeySize>,
-        nonce: &GenericArray<u8, Self::NonceSize>,
-    ) -> Self {
-        use machine::x86::SSE2;
-        let m = SSE2;
-        let key0: <SSE2 as Machine>::u32x4 = m.read_le(&key[..16]);
-        let key1: <SSE2 as Machine>::u32x4 = m.read_le(&key[16..]);
-        let nonce0: <SSE2 as Machine>::u32x4 = m.read_le(&nonce[..16]);
+dispatch_light128!(m, Mach, {
+    fn init_chacha_x(
+        key: &GenericArray<u8, U32>,
+        nonce: &GenericArray<u8, U24>,
+        rounds: u32,
+    ) -> ChaCha {
+        let key0: Mach::u32x4 = m.read_le(&key[..16]);
+        let key1: Mach::u32x4 = m.read_le(&key[16..]);
+        let nonce0: Mach::u32x4 = m.read_le(&nonce[..16]);
         let mut state = ChaCha {
             b: key0.pack(),
             c: key1.pack(),
             d: nonce0.pack(),
         };
-        let x = state.refill_narrow_rounds(Rounds::U32, &mut [0; 0]);
+        let x = refill_narrow_rounds(&mut state, rounds);
         let ctr_nonce1 = m.vec([
             0,
             0,
@@ -516,9 +444,20 @@ impl<Rounds: Unsigned + Default> NewStreamCipher for ChaChaAny<U24, Rounds, X> {
         state.b = x.a;
         state.c = x.d;
         state.d = ctr_nonce1;
+        state
+    }
+});
+
+impl<Rounds: Unsigned + Default> NewStreamCipher for ChaChaAny<U24, Rounds, X> {
+    type KeySize = U32;
+    type NonceSize = U24;
+    fn new(
+        key: &GenericArray<u8, Self::KeySize>,
+        nonce: &GenericArray<u8, Self::NonceSize>,
+    ) -> Self {
         ChaChaAny {
             state: Buffer {
-                state,
+                state: init_chacha_x(key, nonce, Rounds::U32),
                 out: [0; BLOCK],
                 have: 0,
                 len: BIG_LEN,
@@ -535,28 +474,14 @@ impl<NonceSize: Unsigned, Rounds, IsX> SyncStreamCipherSeek for ChaChaAny<NonceS
     #[inline]
     fn current_pos(&self) -> u64 {
         unimplemented!()
-        /*
-        if NonceSize::U32 != 12 {
-            ((u64::from(self.state.state.d.extract(0))
-                | (u64::from(self.state.state.d.extract(1)) << 32))) * BLOCK64
-        } else {
-            u64::from(self.state.state.d.extract(0)) * BLOCK64
-        }
-        */
     }
-    #[inline]
+    #[inline(always)]
     fn seek(&mut self, ct: u64) {
-        let blockct = ct / BLOCK64;
         if NonceSize::U32 != 12 {
-            self.state.len = BIG_LEN.wrapping_sub(blockct);
-            self.state.state.seek64(blockct);
-            self.state.fresh = blockct == 0;
+            seek64(&mut self.state, ct);
         } else {
-            assert!(blockct < SMALL_LEN || (blockct == SMALL_LEN && ct % BLOCK64 == 0));
-            self.state.len = SMALL_LEN - blockct;
-            self.state.state.seek32(blockct as u32);
+            seek32(&mut self.state, ct);
         }
-        self.state.have = -((ct % BLOCK64) as i8);
     }
 }
 

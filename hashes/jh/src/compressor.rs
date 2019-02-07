@@ -12,8 +12,6 @@ use ppv_null::{u128x1, u128x2};
 #[cfg(all(feature = "simd", not(feature = "packed_simd")))]
 use simd::crypto_simd_new::AndNot;
 #[cfg(all(feature = "simd", not(feature = "packed_simd")))]
-use simd::machine::x86::{SSE2, SSE41};
-#[cfg(all(feature = "simd", not(feature = "packed_simd")))]
 use simd::{vec128_storage, Machine, Store, Swap64, VZip, Vec2};
 
 const E8_BITSLICE_ROUNDCONSTANT: [[u8; 32]; 42] = [
@@ -148,60 +146,61 @@ union X2Bytes<M: Machine> {
     bytes: [u8; 32],
 }
 
-#[inline(always)]
-fn f8<M: Machine>(mach: M, state: &mut [vec128_storage; 8], data: *const u8) {
-    #[allow(clippy::cast_ptr_alignment)]
-    let data = data as *const M::u128x1;
-    let mut y = X8::<M>(
-        mach.unpack(state[0]),
-        mach.unpack(state[1]),
-        mach.unpack(state[2]),
-        mach.unpack(state[3]),
-        mach.unpack(state[4]),
-        mach.unpack(state[5]),
-        mach.unpack(state[6]),
-        mach.unpack(state[7]),
-    );
-    unsafe {
-        y.0 ^= ptr::read_unaligned(data);
-        y.1 ^= ptr::read_unaligned(data.offset(1));
-        y.2 ^= ptr::read_unaligned(data.offset(2));
-        y.3 ^= ptr::read_unaligned(data.offset(3));
+dispatch!(mach, M, {
+    fn f8(state: &mut [vec128_storage; 8], data: *const u8) {
+        #[allow(clippy::cast_ptr_alignment)]
+        let data = data as *const M::u128x1;
+        let mut y = X8::<M>(
+            mach.unpack(state[0]),
+            mach.unpack(state[1]),
+            mach.unpack(state[2]),
+            mach.unpack(state[3]),
+            mach.unpack(state[4]),
+            mach.unpack(state[5]),
+            mach.unpack(state[6]),
+            mach.unpack(state[7]),
+        );
+        unsafe {
+            y.0 ^= ptr::read_unaligned(data);
+            y.1 ^= ptr::read_unaligned(data.offset(1));
+            y.2 ^= ptr::read_unaligned(data.offset(2));
+            y.3 ^= ptr::read_unaligned(data.offset(3));
+        }
+        for rc in E8_BITSLICE_ROUNDCONSTANT.chunks_exact(7) {
+            unroll7!(j, {
+                y = ss(y, unsafe { X2Bytes::<M> { bytes: rc[j] }.x2 });
+                y = l(y);
+                let f = match j {
+                    0 => M::u128x1::swap1,
+                    1 => M::u128x1::swap2,
+                    2 => M::u128x1::swap4,
+                    3 => M::u128x1::swap8,
+                    4 => M::u128x1::swap16,
+                    5 => M::u128x1::swap32,
+                    6 => M::u128x1::swap64,
+                    _ => unreachable!(),
+                };
+                y = X8(y.0, f(y.1), y.2, f(y.3), y.4, f(y.5), y.6, f(y.7));
+            });
+        }
+        unsafe {
+            y.4 ^= ptr::read_unaligned(data);
+            y.5 ^= ptr::read_unaligned(data.offset(1));
+            y.6 ^= ptr::read_unaligned(data.offset(2));
+            y.7 ^= ptr::read_unaligned(data.offset(3));
+        }
+        *state = [
+            y.0.pack(),
+            y.1.pack(),
+            y.2.pack(),
+            y.3.pack(),
+            y.4.pack(),
+            y.5.pack(),
+            y.6.pack(),
+            y.7.pack(),
+        ];
     }
-    for rc in E8_BITSLICE_ROUNDCONSTANT.chunks_exact(7) {
-        unroll7!(j, {
-            y = ss(y, unsafe { X2Bytes::<M> { bytes: rc[j] }.x2 });
-            y = l(y);
-            let f = match j {
-                0 => M::u128x1::swap1,
-                1 => M::u128x1::swap2,
-                2 => M::u128x1::swap4,
-                3 => M::u128x1::swap8,
-                4 => M::u128x1::swap16,
-                5 => M::u128x1::swap32,
-                6 => M::u128x1::swap64,
-                _ => unreachable!(),
-            };
-            y = X8(y.0, f(y.1), y.2, f(y.3), y.4, f(y.5), y.6, f(y.7));
-        });
-    }
-    unsafe {
-        y.4 ^= ptr::read_unaligned(data);
-        y.5 ^= ptr::read_unaligned(data.offset(1));
-        y.6 ^= ptr::read_unaligned(data.offset(2));
-        y.7 ^= ptr::read_unaligned(data.offset(3));
-    }
-    *state = [
-        y.0.pack(),
-        y.1.pack(),
-        y.2.pack(),
-        y.3.pack(),
-        y.4.pack(),
-        y.5.pack(),
-        y.6.pack(),
-        y.7.pack(),
-    ];
-}
+});
 
 #[derive(Clone, Copy)]
 pub union Compressor {
@@ -214,69 +213,8 @@ impl Compressor {
         Compressor { bytes }
     }
     #[inline]
-    #[cfg(not(all(
-        feature = "simd",
-        feature = "std",
-        any(target_arch = "x86", target_arch = "x86_64")
-    )))]
     pub fn input(&mut self, data: &GenericArray<u8, U64>) {
-        unsafe {
-            f8(&mut self.cv, data.as_ptr());
-        }
-    }
-    #[inline]
-    #[cfg(all(
-        feature = "simd",
-        feature = "std",
-        any(target_arch = "x86", target_arch = "x86_64")
-    ))]
-    pub fn input(&mut self, data: &GenericArray<u8, U64>) {
-        type F8 = unsafe fn(state: &mut [vec128_storage; 8], data: *const u8);
-        lazy_static! {
-            static ref IMPL: F8 = { select_impl() };
-        }
-        fn select_impl() -> F8 {
-            if is_x86_feature_detected!("sse4.1") {
-                #[target_feature(enable = "sse4.1")]
-                unsafe fn f8_sse41(state: &mut [vec128_storage; 8], data: *const u8) {
-                    f8(SSE41, state, data);
-                }
-                f8_sse41
-            } else {
-                assert!(is_x86_feature_detected!("sse2"));
-                #[target_feature(enable = "sse2")]
-                unsafe fn f8_sse2(state: &mut [vec128_storage; 8], data: *const u8) {
-                    f8(SSE2, state, data);
-                }
-                f8_sse2
-            }
-            /*
-            if cfg!(feature = "avx2") && is_x86_feature_detected!("avx2") {
-                #[target_feature(enable = "avx2")]
-                unsafe fn f8_avx2(state: &mut vec128_storage, data: *const u8) {
-                    f8(state, data);
-                }
-                f8_avx2
-            } else if is_x86_feature_detected!("ssse3") {
-                #[target_feature(enable = "ssse3")]
-                unsafe fn f8_ssse3(state: &mut vec128_storage, data: *const u8) {
-                    f8(state, data);
-                }
-                f8_ssse3
-            } else if is_x86_feature_detected!("sse2") {
-                #[target_feature(enable = "sse2")]
-                unsafe fn f8_sse2(state: &mut vec128_storage, data: *const u8) {
-                    f8(state, data);
-                }
-                f8_sse2
-            } else {
-                f8
-            }
-            */
-        }
-        unsafe {
-            IMPL(&mut self.cv, data.as_ptr());
-        }
+        f8(unsafe { &mut self.cv }, data.as_ptr());
     }
     #[inline]
     pub fn finalize(self) -> [u8; 128] {

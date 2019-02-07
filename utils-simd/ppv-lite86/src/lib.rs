@@ -218,6 +218,11 @@ pub(crate) mod features {
     pub struct NoS4;
 
     #[derive(Copy, Clone)]
+    pub struct YesA1;
+    #[derive(Copy, Clone)]
+    pub struct NoA1;
+
+    #[derive(Copy, Clone)]
     pub struct YesA2;
     #[derive(Copy, Clone)]
     pub struct NoA2;
@@ -232,6 +237,7 @@ pub(crate) use crate::features::*;
 pub trait Machine: Sized + Copy {
     type S3; // SSSE3
     type S4; // SSE4.1
+    type A1; // AVX
     type A2; // AVX2
     type NI; // AES
 
@@ -302,6 +308,7 @@ pub mod machine {
         impl Machine for SSE2 {
             type S3 = NoS3;
             type S4 = NoS4;
+            type A1 = NoA1;
             type A2 = NoA2;
             type NI = NoNI;
             sse2_vectypes!();
@@ -312,6 +319,7 @@ pub mod machine {
         impl Machine for SSSE3 {
             type S3 = YesS3;
             type S4 = NoS4;
+            type A1 = NoA1;
             type A2 = NoA2;
             type NI = NoNI;
             sse2_vectypes!();
@@ -322,6 +330,20 @@ pub mod machine {
         impl Machine for SSE41 {
             type S3 = YesS3;
             type S4 = YesS4;
+            type A1 = NoA1;
+            type A2 = NoA2;
+            type NI = NoNI;
+            sse2_vectypes!();
+        }
+
+        /// AVX but not AVX2: only 128-bit integer operations, but use VEX versions of everything
+        /// to avoid expensive SSE/VEX conflicts.
+        #[derive(Copy, Clone)]
+        pub struct AVX;
+        impl Machine for AVX {
+            type S3 = YesS3;
+            type S4 = YesS4;
+            type A1 = YesA1;
             type A2 = NoA2;
             type NI = NoNI;
             sse2_vectypes!();
@@ -405,4 +427,152 @@ pub trait StoreBytes {
     unsafe fn unsafe_read_be(input: &[u8]) -> Self;
     fn write_le(self, out: &mut [u8]);
     fn write_be(self, out: &mut [u8]);
+}
+
+/// Generate the full set of optimized implementations to take advantage of the most important
+/// hardware feature sets.
+///
+/// This dispatcher is suitable for maximizing throughput.
+#[macro_export]
+macro_rules! dispatch {
+    ($mach:ident, $MTy:ident, { $([$pub:tt$(($krate:tt))*])* fn $name:ident($($arg:ident: $argty:ty),* $(,)*) -> $ret:ty $body:block }) => {
+        #[inline(always)]
+        $($pub$(($krate))*)* fn $name($($arg: $argty),*) -> $ret {
+            #[inline(always)]
+            fn fn_impl<$MTy: $crate::Machine>($mach: $MTy, $($arg: $argty),*) -> $ret $body
+            type FnTy = unsafe fn($($arg: $argty),*) -> $ret;
+            lazy_static! {
+                static ref IMPL: FnTy = { dispatch_init() };
+            }
+            #[cold]
+            fn dispatch_init() -> FnTy {
+                use std::arch::x86_64::*;
+                if is_x86_feature_detected!("avx") {
+                    #[target_feature(enable = "avx")]
+                    unsafe fn impl_avx($($arg: $argty),*) -> $ret {
+                        fn_impl($crate::machine::x86::AVX, $($arg),*)
+                    }
+                    impl_avx
+                } else if is_x86_feature_detected!("sse4.1") {
+                    #[target_feature(enable = "sse4.1")]
+                    unsafe fn impl_sse41($($arg: $argty),*) -> $ret {
+                        fn_impl($crate::machine::x86::SSE41, $($arg),*)
+                    }
+                    impl_sse41
+                } else if is_x86_feature_detected!("ssse3") {
+                    #[target_feature(enable = "ssse3")]
+                    unsafe fn impl_ssse3($($arg: $argty),*) -> $ret {
+                        fn_impl($crate::machine::x86::SSSE3, $($arg),*)
+                    }
+                    impl_ssse3
+                } else if is_x86_feature_detected!("sse2") {
+                    #[target_feature(enable = "sse2")]
+                    unsafe fn impl_sse2($($arg: $argty),*) -> $ret {
+                        fn_impl($crate::machine::x86::SSE2, $($arg),*)
+                    }
+                    impl_sse2
+                } else {
+                    unimplemented!()
+                }
+            }
+            unsafe { IMPL($($arg),*) }
+        }
+    };
+    ($mach:ident, $MTy:ident, { $([$pub:tt $(($krate:tt))*])* fn $name:ident($($arg:ident: $argty:ty),* $(,)*) $body:block }) => {
+        dispatch!($mach, $MTy, {
+            $([$pub $(($krate))*])* fn $name($($arg: $argty),*) -> () $body
+        });
+    }
+}
+
+/// Generate only the basic implementations necessary to be able to operate efficiently on 128-bit
+/// vectors on this platfrom. For x86-64, that would mean SSE2 and AVX.
+///
+/// This dispatcher is suitable for vector operations that do not benefit from advanced hardware
+/// features (e.g. because they are done infrequently), so minimizing their contribution to code
+/// size is more important.
+#[macro_export]
+macro_rules! dispatch_light128 {
+    ($mach:ident, $MTy:ident, { $([$pub:tt$(($krate:tt))*])* fn $name:ident($($arg:ident: $argty:ty),* $(,)*) -> $ret:ty $body:block }) => {
+        #[inline(always)]
+        $([$pub $(($krate))*])* fn $name($($arg: $argty),*) -> $ret {
+            #[inline(always)]
+            fn fn_impl<$MTy: $crate::Machine>($mach: $MTy, $($arg: $argty),*) -> $ret $body
+            type FnTy = unsafe fn($($arg: $argty),*) -> $ret;
+            lazy_static! {
+                static ref IMPL: FnTy = { dispatch_init() };
+            }
+            #[cold]
+            fn dispatch_init() -> FnTy {
+                use std::arch::x86_64::*;
+                if is_x86_feature_detected!("avx") {
+                    #[target_feature(enable = "avx")]
+                    unsafe fn impl_avx($($arg: $argty),*) -> $ret {
+                        fn_impl($crate::machine::x86::AVX, $($arg),*)
+                    }
+                    impl_avx
+                } else if is_x86_feature_detected!("sse2") {
+                    #[target_feature(enable = "sse2")]
+                    unsafe fn impl_sse2($($arg: $argty),*) -> $ret {
+                        fn_impl($crate::machine::x86::SSE2, $($arg),*)
+                    }
+                    impl_sse2
+                } else {
+                    unimplemented!()
+                }
+            }
+            unsafe { IMPL($($arg),*) }
+        }
+    };
+    ($mach:ident, $MTy:ident, { $([$pub:tt$(($krate:tt))*])* fn $name:ident($($arg:ident: $argty:ty),* $(,)*) $body:block }) => {
+        dispatch_light128!($mach, $MTy, {
+            $([$pub $(($krate))*])* fn $name($($arg: $argty),*) -> () $body
+        });
+    }
+}
+
+/// Generate only the basic implementations necessary to be able to operate efficiently on 256-bit
+/// vectors on this platfrom. For x86-64, that would mean SSE2, AVX, and AVX2.
+///
+/// This dispatcher is suitable for vector operations that do not benefit from advanced hardware
+/// features (e.g. because they are done infrequently), so minimizing their contribution to code
+/// size is more important.
+#[macro_export]
+macro_rules! dispatch_light256 {
+    ($mach:ident, $MTy:ident, { $([$pub:tt$(($krate:tt))*])* fn $name:ident($($arg:ident: $argty:ty),* $(,)*) -> $ret:ty $body:block }) => {
+        #[inline(always)]
+        $([$pub $(($krate))*])* fn $name($($arg: $argty),*) -> $ret {
+            #[inline(always)]
+            fn fn_impl<$MTy: $crate::Machine>($mach: $MTy, $($arg: $argty),*) -> $ret $body
+            type FnTy = unsafe fn($($arg: $argty),*) -> $ret;
+            lazy_static! {
+                static ref IMPL: FnTy = { dispatch_init() };
+            }
+            #[cold]
+            fn dispatch_init() -> FnTy {
+                use std::arch::x86_64::*;
+                if is_x86_feature_detected!("avx") {
+                    #[target_feature(enable = "avx")]
+                    unsafe fn impl_avx($($arg: $argty),*) -> $ret {
+                        fn_impl($crate::machine::x86::AVX, $($arg),*)
+                    }
+                    impl_avx
+                } else if is_x86_feature_detected!("sse2") {
+                    #[target_feature(enable = "sse2")]
+                    unsafe fn impl_sse2($($arg: $argty),*) -> $ret {
+                        fn_impl($crate::machine::x86::SSE2, $($arg),*)
+                    }
+                    impl_sse2
+                } else {
+                    unimplemented!()
+                }
+            }
+            unsafe { IMPL($($arg),*) }
+        }
+    };
+    ($mach:ident, $MTy:ident, { $([$pub:tt$(($krate:tt))*])* fn $name:ident($($arg:ident: $argty:ty),* $(,)*) $body:block }) => {
+        dispatch_light128!($mach, $MTy, {
+            $([$pub $(($krate))*])* fn $name($($arg: $argty),*) -> () $body
+        });
+    }
 }

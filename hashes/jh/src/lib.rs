@@ -16,6 +16,7 @@ extern crate packed_simd_crate;
 #[cfg(not(any(feature = "simd", feature = "packed_simd")))]
 extern crate ppv_null;
 #[cfg(all(feature = "simd", not(feature = "packed_simd")))]
+#[macro_use]
 extern crate simd;
 
 mod compressor;
