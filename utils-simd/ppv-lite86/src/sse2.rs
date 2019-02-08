@@ -215,8 +215,10 @@ impl<S4: Copy, NI: Copy> RotateEachWord32 for u32x4_sse2<NoS3, S4, NI> {
     rotr_32!(rotate_each_word_right8, 8);
     rotr_32!(rotate_each_word_right11, 11);
     rotr_32!(rotate_each_word_right12, 12);
-    // TODO: shufflehi/shufflelo impl
-    rotr_32!(rotate_each_word_right16, 16);
+    #[inline(always)]
+    fn rotate_each_word_right16(self) -> Self {
+        Self::new(swap16_s2(self.x))
+    }
     rotr_32!(rotate_each_word_right20, 20);
     rotr_32!(rotate_each_word_right24, 24);
     rotr_32!(rotate_each_word_right25, 25);
@@ -275,8 +277,10 @@ impl<S4: Copy, NI: Copy> RotateEachWord32 for u64x2_sse2<NoS3, S4, NI> {
     rotr_64!(rotate_each_word_right8, 8);
     rotr_64!(rotate_each_word_right11, 11);
     rotr_64!(rotate_each_word_right12, 12);
-    // TODO: shufflehi/shufflelo impl
-    rotr_64!(rotate_each_word_right16, 16);
+    #[inline(always)]
+    fn rotate_each_word_right16(self) -> Self {
+        Self::new(swap16_s2(self.x))
+    }
     rotr_64!(rotate_each_word_right20, 20);
     rotr_64!(rotate_each_word_right24, 24);
     rotr_64!(rotate_each_word_right25, 25);
@@ -763,6 +767,10 @@ macro_rules! swapi {
         }
     };
 }
+#[inline(always)]
+fn swap16_s2(x: __m128i) -> __m128i {
+    unsafe { _mm_shufflehi_epi16(_mm_shufflelo_epi16(x, 0b1011_0001), 0b1011_0001) }
+}
 impl<S4, NI> Swap64 for u128x1_sse2<YesS3, S4, NI> {
     #[inline(always)]
     fn swap1(self) -> Self {
@@ -820,9 +828,7 @@ impl<S4, NI> Swap64 for u128x1_sse2<NoS3, S4, NI> {
     }
     #[inline(always)]
     fn swap16(self) -> Self {
-        u128x1_sse2::new(unsafe {
-            _mm_shufflehi_epi16(_mm_shufflelo_epi16(self.x, 0b1011_0001), 0b1011_0001)
-        })
+        u128x1_sse2::new(swap16_s2(self.x))
     }
     #[inline(always)]
     fn swap32(self) -> Self {
