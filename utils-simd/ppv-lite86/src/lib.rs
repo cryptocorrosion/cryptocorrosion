@@ -245,6 +245,7 @@ pub mod crypto_simd_new_types {
     where
         V: MultiLane<T>,
     {
+        #[inline(always)]
         fn vzip(self) -> V {
             V::from_lanes(self)
         }
@@ -294,10 +295,12 @@ pub trait Machine: Sized + Copy {
     type u64x2x4: u64x2x4<Self>;
     type u128x4: u128x4<Self>;
 
+    #[inline(always)]
     fn unpack<S, V: Store<S>>(self, s: S) -> V {
         unsafe { V::unpack(s) }
     }
 
+    #[inline(always)]
     fn vec<V, A>(self, a: A) -> V
     where
         V: MultiLane<A>,
@@ -305,7 +308,7 @@ pub trait Machine: Sized + Copy {
         V::from_lanes(a)
     }
 
-    // TODO: require the type to be from this machine!
+    #[inline(always)]
     fn read_le<V>(self, input: &[u8]) -> V
     where
         V: StoreBytes,
@@ -313,7 +316,7 @@ pub trait Machine: Sized + Copy {
         unsafe { V::unsafe_read_le(input) }
     }
 
-    // TODO: require the type to be from this machine!
+    #[inline(always)]
     fn read_be<V>(self, input: &[u8]) -> V
     where
         V: StoreBytes,
@@ -429,6 +432,7 @@ impl_into!(vec256_storage, [u32; 8], u32x8);
 impl_into!(vec256_storage, [u64; 4], u64x4);
 impl_into!(vec256_storage, [u128; 2], u128x2);
 impl Into<vec256_storage> for [u64; 4] {
+    #[inline(always)]
     fn into(self) -> vec256_storage {
         vec256_storage { u64x4: self }
     }

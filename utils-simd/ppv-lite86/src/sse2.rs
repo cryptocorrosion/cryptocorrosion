@@ -61,6 +61,7 @@ macro_rules! def_vec {
             }
         }
         impl<S3, S4, NI> $vec<S3, S4, NI> {
+            #[inline(always)]
             fn new(x: __m128i) -> Self {
                 $vec {
                     x,
@@ -991,9 +992,11 @@ where
     fwd_unop_x2!(swap64);
 }
 impl<W: Copy, G> MultiLane<[W; 2]> for x2<W, G> {
+    #[inline(always)]
     fn to_lanes(self) -> [W; 2] {
         self.0
     }
+    #[inline(always)]
     fn from_lanes(lanes: [W; 2]) -> Self {
         x2::new(lanes)
     }
@@ -1167,9 +1170,11 @@ where
     fwd_unop_x4!(swap64);
 }
 impl<W: Copy> MultiLane<[W; 4]> for x4<W> {
+    #[inline(always)]
     fn to_lanes(self) -> [W; 4] {
         self.0
     }
+    #[inline(always)]
     fn from_lanes(lanes: [W; 4]) -> Self {
         x4(lanes)
     }
@@ -1393,6 +1398,7 @@ unsafe fn eq128_s2(x: __m128i, y: __m128i) -> bool {
 }
 
 impl<S3, S4, NI> PartialEq for u32x4_sse2<S3, S4, NI> {
+    #[inline(always)]
     fn eq(&self, rhs: &Self) -> bool {
         unsafe { eq128_s2(self.x, rhs.x) }
     }
