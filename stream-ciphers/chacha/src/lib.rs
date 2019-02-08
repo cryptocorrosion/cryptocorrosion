@@ -146,7 +146,7 @@ impl ChaCha {
     }
 }
 
-dispatch_light128!(m, Mach, {
+dispatch!(m, Mach, {
     fn refill_wide(state: &mut ChaCha, drounds: u32, out: &mut [u8; BUFSZ]) {
         let k = m.vec([0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574]);
         // TODO: endian
@@ -213,7 +213,7 @@ dispatch_light128!(m, Mach, {
 
 /// Single-block, rounds-only; shared by try_apply_keystream for tails shorter than BUFSZ
 /// and XChaCha's setup step.
-dispatch_light128!(m, Mach, {
+dispatch!(m, Mach, {
     fn refill_narrow_rounds(state: &mut ChaCha, drounds: u32) -> State<vec128_storage> {
         let k: Mach::u32x4 = m.vec([0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574]);
         let mut x = State {
