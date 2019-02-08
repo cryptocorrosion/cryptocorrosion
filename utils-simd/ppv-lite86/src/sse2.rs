@@ -7,7 +7,8 @@ use crate::crypto_simd_new::*;
 use crate::crypto_simd_new_types::*;
 use crate::machine::x86::Machine86;
 use crate::{
-    vec128_storage, vec256_storage, vec512_storage, Machine, NoS3, Store, StoreBytes, YesS3,
+    vec128_storage, vec256_storage, vec512_storage, Machine, NoS3, NoS4, Store, StoreBytes, YesS3,
+    YesS4,
 };
 
 macro_rules! impl_binop {
@@ -248,8 +249,11 @@ macro_rules! rotr_64 {
 }
 impl<S4: Copy, NI: Copy> RotateEachWord32 for u64x2_sse2<YesS3, S4, NI> {
     rotr_64!(rotate_each_word_right7, 7);
-    // TODO
-    rotr_64!(rotate_each_word_right8, 8);
+    rotr_64_s3!(
+        rotate_each_word_right8,
+        0x080f_0e0d_0c0b_0a09,
+        0x0007_0605_0403_0201
+    );
     rotr_64!(rotate_each_word_right11, 11);
     rotr_64!(rotate_each_word_right12, 12);
     rotr_64_s3!(
@@ -258,8 +262,11 @@ impl<S4: Copy, NI: Copy> RotateEachWord32 for u64x2_sse2<YesS3, S4, NI> {
         0x0100_0706_0504_0302
     );
     rotr_64!(rotate_each_word_right20, 20);
-    // TODO
-    rotr_64!(rotate_each_word_right24, 24);
+    rotr_64_s3!(
+        rotate_each_word_right24,
+        0x0a09_080f_0e0d_0c0b,
+        0x0201_0007_0605_0403
+    );
     rotr_64!(rotate_each_word_right25, 25);
 }
 impl<S4: Copy, NI: Copy> RotateEachWord32 for u64x2_sse2<NoS3, S4, NI> {
@@ -314,31 +321,45 @@ def_vec!(u32x4_sse2, u32);
 def_vec!(u64x2_sse2, u64);
 def_vec!(u128x1_sse2, u128);
 
-impl<S3, S4, NI> MultiLane<[u32; 4]> for u32x4_sse2<S3, S4, NI> {
+impl<S3, NI> MultiLane<[u32; 4]> for u32x4_sse2<S3, YesS4, NI> {
     #[inline(always)]
     fn to_lanes(self) -> [u32; 4] {
         unsafe {
-            [
-                // TODO: no-S4 impl!
-                _mm_cvtsi128_si32(self.x) as u32,
-                _mm_extract_epi32(self.x, 1) as u32,
-                _mm_extract_epi32(self.x, 2) as u32,
-                _mm_extract_epi32(self.x, 3) as u32,
-            ]
+            let x = _mm_cvtsi128_si64(self.x) as u64;
+            let y = _mm_extract_epi64(self.x, 1) as u64;
+            [x as u32, (x >> 32) as u32, y as u32, (y >> 32) as u32]
         }
     }
     #[inline(always)]
     fn from_lanes(xs: [u32; 4]) -> Self {
         unsafe {
-            let mut x = _mm_cvtsi32_si128(xs[0] as i32);
-            x = _mm_insert_epi32(x, xs[1] as i32, 1);
-            x = _mm_insert_epi32(x, xs[2] as i32, 2);
-            x = _mm_insert_epi32(x, xs[3] as i32, 3);
+            let mut x = _mm_cvtsi64_si128((xs[0] as u64 | ((xs[1] as u64) << 32)) as i64);
+            x = _mm_insert_epi64(x, (xs[2] as u64 | ((xs[3] as u64) << 32)) as i64, 1);
             Self::new(x)
         }
     }
 }
-impl<S3, S4, NI> MultiLane<[u64; 2]> for u64x2_sse2<S3, S4, NI> {
+impl<S3, NI> MultiLane<[u32; 4]> for u32x4_sse2<S3, NoS4, NI> {
+    #[inline(always)]
+    fn to_lanes(self) -> [u32; 4] {
+        unsafe {
+            let x = _mm_cvtsi128_si64(self.x) as u64;
+            let y = _mm_cvtsi128_si64(_mm_shuffle_epi32(self.x, 0b11101110)) as u64;
+            [x as u32, (x >> 32) as u32, y as u32, (y >> 32) as u32]
+        }
+    }
+    #[inline(always)]
+    fn from_lanes(xs: [u32; 4]) -> Self {
+        unsafe {
+            let x = (xs[0] as u64 | ((xs[1] as u64) << 32)) as i64;
+            let y = (xs[2] as u64 | ((xs[3] as u64) << 32)) as i64;
+            let x = _mm_cvtsi64_si128(x);
+            let y = _mm_slli_si128(_mm_cvtsi64_si128(y), 8);
+            Self::new(_mm_or_si128(x, y))
+        }
+    }
+}
+impl<S3, NI> MultiLane<[u64; 2]> for u64x2_sse2<S3, YesS4, NI> {
     #[inline(always)]
     fn to_lanes(self) -> [u64; 2] {
         unsafe {
@@ -354,6 +375,25 @@ impl<S3, S4, NI> MultiLane<[u64; 2]> for u64x2_sse2<S3, S4, NI> {
             let mut x = _mm_cvtsi64_si128(xs[0] as i64);
             x = _mm_insert_epi64(x, xs[1] as i64, 1);
             Self::new(x)
+        }
+    }
+}
+impl<S3, NI> MultiLane<[u64; 2]> for u64x2_sse2<S3, NoS4, NI> {
+    #[inline(always)]
+    fn to_lanes(self) -> [u64; 2] {
+        unsafe {
+            [
+                _mm_cvtsi128_si64(self.x) as u64,
+                _mm_cvtsi128_si64(_mm_srli_si128(self.x, 8)) as u64,
+            ]
+        }
+    }
+    #[inline(always)]
+    fn from_lanes(xs: [u64; 2]) -> Self {
+        unsafe {
+            let x = _mm_cvtsi64_si128(xs[0] as i64);
+            let y = _mm_slli_si128(_mm_cvtsi64_si128(xs[1] as i64), 8);
+            Self::new(_mm_or_si128(x, y))
         }
     }
 }
@@ -418,12 +458,13 @@ impl_binop_assign!(u64x2_sse2, AddAssign, add_assign, add);
 
 impl<S3: Copy, S4: Copy, NI: Copy> u32x4<Machine86<S3, S4, NI>> for u32x4_sse2<S3, S4, NI>
 where
-    u32x4_sse2<S3, S4, NI>: RotateEachWord32 + BSwap,
+    u32x4_sse2<S3, S4, NI>: RotateEachWord32 + BSwap + MultiLane<[u32; 4]> + Vec4<u32>,
     Machine86<S3, S4, NI>: Machine,
 {}
 impl<S3: Copy, S4: Copy, NI: Copy> u64x2<Machine86<S3, S4, NI>> for u64x2_sse2<S3, S4, NI>
 where
-    u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap,
+    u64x2_sse2<S3, S4, NI>:
+        RotateEachWord64 + RotateEachWord32 + BSwap + MultiLane<[u64; 2]> + Vec2<u64>,
     Machine86<S3, S4, NI>: Machine,
 {}
 impl<S3: Copy, S4: Copy, NI: Copy> u128x1<Machine86<S3, S4, NI>> for u128x1_sse2<S3, S4, NI>
@@ -446,18 +487,13 @@ impl<S3, S4, NI> UnsafeFrom<[u32; 4]> for u32x4_sse2<S3, S4, NI> {
     }
 }
 
-impl<S3, S4, NI> Vec4<u32> for u32x4_sse2<S3, S4, NI> {
+impl<S3, NI> Vec4<u32> for u32x4_sse2<S3, YesS4, NI>
+where
+    Self: MultiLane<[u32; 4]>,
+{
     #[inline(always)]
     fn extract(self, i: u32) -> u32 {
-        unsafe {
-            match i {
-                0 => _mm_extract_epi32(self.x, 0) as u32,
-                1 => _mm_extract_epi32(self.x, 1) as u32,
-                2 => _mm_extract_epi32(self.x, 2) as u32,
-                3 => _mm_extract_epi32(self.x, 3) as u32,
-                _ => unreachable!(),
-            }
-        }
+        self.to_lanes()[i as usize]
     }
     #[inline(always)]
     fn insert(self, v: u32, i: u32) -> Self {
@@ -467,6 +503,44 @@ impl<S3, S4, NI> Vec4<u32> for u32x4_sse2<S3, S4, NI> {
                 1 => _mm_insert_epi32(self.x, v as i32, 1),
                 2 => _mm_insert_epi32(self.x, v as i32, 2),
                 3 => _mm_insert_epi32(self.x, v as i32, 3),
+                _ => unreachable!(),
+            }
+        })
+    }
+}
+impl<S3, NI> Vec4<u32> for u32x4_sse2<S3, NoS4, NI>
+where
+    Self: MultiLane<[u32; 4]>,
+{
+    #[inline(always)]
+    fn extract(self, i: u32) -> u32 {
+        self.to_lanes()[i as usize]
+    }
+    #[inline(always)]
+    fn insert(self, v: u32, i: u32) -> Self {
+        Self::new(unsafe {
+            match i {
+                0 => {
+                    let x = _mm_andnot_si128(_mm_cvtsi32_si128(-1), self.x);
+                    _mm_or_si128(x, _mm_cvtsi32_si128(v as i32))
+                }
+                1 => {
+                    let mut x = _mm_shuffle_epi32(self.x, 0b0111_1000);
+                    x = _mm_slli_si128(self.x, 4);
+                    x = _mm_or_si128(x, _mm_cvtsi32_si128(v as i32));
+                    _mm_shuffle_epi32(x, 0b1110_0001)
+                }
+                2 => {
+                    let mut x = _mm_shuffle_epi32(self.x, 0b1011_0100);
+                    x = _mm_slli_si128(self.x, 4);
+                    x = _mm_or_si128(x, _mm_cvtsi32_si128(v as i32));
+                    _mm_shuffle_epi32(x, 0b1100_1001)
+                }
+                3 => {
+                    let mut x = _mm_slli_si128(self.x, 4);
+                    x = _mm_or_si128(x, _mm_cvtsi32_si128(v as i32));
+                    _mm_shuffle_epi32(x, 0b0011_1001)
+                }
                 _ => unreachable!(),
             }
         })
@@ -503,7 +577,7 @@ impl<S3, S4, NI> Words4 for u32x4_sse2<S3, S4, NI> {
     }
 }
 
-impl<S3, S4, NI> Words4 for u64x4_sse2<S3, S4, NI> {
+impl<S4, NI> Words4 for u64x4_sse2<YesS3, S4, NI> {
     #[inline(always)]
     fn shuffle2301(self) -> Self {
         x2::new([u64x2_sse2::new(self.0[1].x), u64x2_sse2::new(self.0[0].x)])
@@ -527,6 +601,36 @@ impl<S3, S4, NI> Words4 for u64x4_sse2<S3, S4, NI> {
         }
     }
 }
+impl<S4, NI> Words4 for u64x4_sse2<NoS3, S4, NI> {
+    #[inline(always)]
+    fn shuffle2301(self) -> Self {
+        x2::new([u64x2_sse2::new(self.0[1].x), u64x2_sse2::new(self.0[0].x)])
+    }
+    #[inline(always)]
+    fn shuffle3012(self) -> Self {
+        unsafe {
+            let a = _mm_srli_si128(self.0[0].x, 8);
+            let b = _mm_slli_si128(self.0[0].x, 8);
+            let c = _mm_srli_si128(self.0[1].x, 8);
+            let d = _mm_slli_si128(self.0[1].x, 8);
+            let da = _mm_or_si128(d, a);
+            let bc = _mm_or_si128(b, c);
+            x2::new([u64x2_sse2::new(da), u64x2_sse2::new(bc)])
+        }
+    }
+    #[inline(always)]
+    fn shuffle1230(self) -> Self {
+        unsafe {
+            let a = _mm_srli_si128(self.0[0].x, 8);
+            let b = _mm_slli_si128(self.0[0].x, 8);
+            let c = _mm_srli_si128(self.0[1].x, 8);
+            let d = _mm_slli_si128(self.0[1].x, 8);
+            let da = _mm_or_si128(d, a);
+            let bc = _mm_or_si128(b, c);
+            x2::new([u64x2_sse2::new(bc), u64x2_sse2::new(da)])
+        }
+    }
+}
 
 impl<S3, S4, NI> UnsafeFrom<[u64; 2]> for u64x2_sse2<S3, S4, NI> {
     #[inline(always)]
@@ -535,12 +639,12 @@ impl<S3, S4, NI> UnsafeFrom<[u64; 2]> for u64x2_sse2<S3, S4, NI> {
     }
 }
 
-impl<S3, S4, NI> Vec2<u64> for u64x2_sse2<S3, S4, NI> {
+impl<S3, NI> Vec2<u64> for u64x2_sse2<S3, YesS4, NI> {
     #[inline(always)]
     fn extract(self, i: u32) -> u64 {
         unsafe {
             match i {
-                0 => _mm_extract_epi64(self.x, 0) as u64,
+                0 => _mm_cvtsi128_si64(self.x) as u64,
                 1 => _mm_extract_epi64(self.x, 1) as u64,
                 _ => unreachable!(),
             }
@@ -552,6 +656,34 @@ impl<S3, S4, NI> Vec2<u64> for u64x2_sse2<S3, S4, NI> {
             match i {
                 0 => _mm_insert_epi64(self.x, x as i64, 0),
                 1 => _mm_insert_epi64(self.x, x as i64, 1),
+                _ => unreachable!(),
+            }
+        })
+    }
+}
+impl<S3, NI> Vec2<u64> for u64x2_sse2<S3, NoS4, NI> {
+    #[inline(always)]
+    fn extract(self, i: u32) -> u64 {
+        unsafe {
+            match i {
+                0 => _mm_cvtsi128_si64(self.x) as u64,
+                1 => _mm_cvtsi128_si64(_mm_shuffle_epi32(self.x, 0b11101110)) as u64,
+                _ => unreachable!(),
+            }
+        }
+    }
+    #[inline(always)]
+    fn insert(self, x: u64, i: u32) -> Self {
+        Self::new(unsafe {
+            match i {
+                0 => _mm_or_si128(
+                    _mm_andnot_si128(_mm_cvtsi64_si128(-1), self.x),
+                    _mm_cvtsi64_si128(x as i64),
+                ),
+                1 => _mm_or_si128(
+                    _mm_move_epi64(self.x),
+                    _mm_slli_si128(_mm_cvtsi64_si128(x as i64), 8),
+                ),
                 _ => unreachable!(),
             }
         })
@@ -1146,8 +1278,7 @@ impl<S3: Copy, S4: Copy, NI: Copy> u64x4<Machine86<S3, S4, NI>> for u64x4_sse2<S
 where
     u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap,
     Machine86<S3, S4, NI>: Machine,
-    u64x4_sse2<S3, S4, NI>: MultiLane<[u64; 4]>,
-    u64x4_sse2<S3, S4, NI>: Vec4<u64>,
+    u64x4_sse2<S3, S4, NI>: MultiLane<[u64; 4]> + Vec4<u64> + Words4,
 {}
 impl<S3: Copy, S4: Copy, NI: Copy> u128x2<Machine86<S3, S4, NI>> for u128x2_sse2<S3, S4, NI>
 where
@@ -1161,7 +1292,7 @@ where
 {}
 impl<S3, S4, NI> Vec4<u64> for u64x4_sse2<S3, S4, NI>
 where
-    u64x2_sse2<S3, S4, NI>: Copy,
+    u64x2_sse2<S3, S4, NI>: Copy + Vec2<u64>,
 {
     #[inline(always)]
     fn extract(self, i: u32) -> u64 {
@@ -1240,13 +1371,25 @@ impl_into_x!(u128x1_sse2, u32x4_sse2);
 
 use core::fmt::{Debug, Formatter, Result};
 
-// TODO: S4 impl: cmpeq_epi64 -> shuffle_epi32 -> cvtsi128_si64
+impl<W: PartialEq, G> PartialEq for x2<W, G> {
+    #[inline(always)]
+    fn eq(&self, rhs: &Self) -> bool {
+        self.0[0] == rhs.0[0] && self.0[1] == rhs.0[1]
+    }
+}
+
+#[inline(always)]
+unsafe fn eq128_s4(x: __m128i, y: __m128i) -> bool {
+    let q = _mm_shuffle_epi32(_mm_cmpeq_epi64(x, y), 0b1100_0110);
+    _mm_cvtsi128_si64(q) == -1
+}
+
 #[inline(always)]
 unsafe fn eq128_s2(x: __m128i, y: __m128i) -> bool {
     let q = _mm_cmpeq_epi32(x, y);
-    let p = _mm_extract_epi64(q, 1);
+    let p = _mm_cvtsi128_si64(_mm_srli_si128(q, 8));
     let q = _mm_cvtsi128_si64(q);
-    (p & q).wrapping_add(1) == 0
+    (p & q) == -1
 }
 
 impl<S3, S4, NI> PartialEq for u32x4_sse2<S3, S4, NI> {
@@ -1256,7 +1399,7 @@ impl<S3, S4, NI> PartialEq for u32x4_sse2<S3, S4, NI> {
 }
 impl<S3, S4, NI> Debug for u32x4_sse2<S3, S4, NI>
 where
-    Self: Copy,
+    Self: Copy + MultiLane<[u32; 4]>,
 {
     #[cold]
     fn fmt(&self, fmt: &mut Formatter) -> Result {
@@ -1272,7 +1415,7 @@ impl<S3, S4, NI> PartialEq for u64x2_sse2<S3, S4, NI> {
 }
 impl<S3, S4, NI> Debug for u64x2_sse2<S3, S4, NI>
 where
-    Self: Copy,
+    Self: Copy + MultiLane<[u64; 2]>,
 {
     #[cold]
     fn fmt(&self, fmt: &mut Formatter) -> Result {
@@ -1280,10 +1423,22 @@ where
     }
 }
 
+impl<S3, S4, NI> Debug for u64x4_sse2<S3, S4, NI>
+where
+    u64x2_sse2<S3, S4, NI>: Copy + MultiLane<[u64; 2]>,
+{
+    #[cold]
+    fn fmt(&self, fmt: &mut Formatter) -> Result {
+        let (a, b) = (self.0[0].to_lanes(), self.0[1].to_lanes());
+        fmt.write_fmt(format_args!("{:016x?}", &[a[0], a[1], b[0], b[1]]))
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::machine::x86::{SSE2, SSSE3};
+    use crate::crypto_simd_new_types::*;
+    use crate::machine::x86::{SSE2, SSE41, SSSE3};
     use crate::Machine;
 
     #[test]
@@ -1330,5 +1485,215 @@ mod test {
 
         assert_eq!(x_s2, s2.vec(ys));
         assert_eq!(x_s3, unsafe { core::mem::transmute(x_s3) });
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_shuffle32_s2_vs_s3() {
+        let xs = [0x0, 0x1, 0x2, 0x3];
+        let ys = [0x2, 0x3, 0x0, 0x1];
+        let zs = [0x1, 0x2, 0x3, 0x0];
+
+        let s2 = unsafe { SSE2::instance() };
+        let s3 = unsafe { SSSE3::instance() };
+
+        let x_s2 = {
+            let x_s2: <SSE2 as Machine>::u32x4 = s2.vec(xs);
+            x_s2.shuffle2301()
+        };
+        let x_s3 = {
+            let x_s3: <SSSE3 as Machine>::u32x4 = s3.vec(xs);
+            x_s3.shuffle2301()
+        };
+        assert_eq!(x_s2, s2.vec(ys));
+        assert_eq!(x_s3, unsafe { core::mem::transmute(x_s3) });
+
+        let x_s2 = {
+            let x_s2: <SSE2 as Machine>::u32x4 = s2.vec(xs);
+            x_s2.shuffle3012()
+        };
+        let x_s3 = {
+            let x_s3: <SSSE3 as Machine>::u32x4 = s3.vec(xs);
+            x_s3.shuffle3012()
+        };
+        assert_eq!(x_s2, s2.vec(zs));
+        assert_eq!(x_s3, unsafe { core::mem::transmute(x_s3) });
+
+        let x_s2 = x_s2.shuffle1230();
+        let x_s3 = x_s3.shuffle1230();
+        assert_eq!(x_s2, s2.vec(xs));
+        assert_eq!(x_s3, unsafe { core::mem::transmute(x_s3) });
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_shuffle64_s2_vs_s3() {
+        let xs = [0x0, 0x1, 0x2, 0x3];
+        let ys = [0x2, 0x3, 0x0, 0x1];
+        let zs = [0x1, 0x2, 0x3, 0x0];
+
+        let s2 = unsafe { SSE2::instance() };
+        let s3 = unsafe { SSSE3::instance() };
+
+        let x_s2 = {
+            let x_s2: <SSE2 as Machine>::u64x4 = s2.vec(xs);
+            x_s2.shuffle2301()
+        };
+        let x_s3 = {
+            let x_s3: <SSSE3 as Machine>::u64x4 = s3.vec(xs);
+            x_s3.shuffle2301()
+        };
+        assert_eq!(x_s2, s2.vec(ys));
+        assert_eq!(x_s3, unsafe { core::mem::transmute(x_s3) });
+
+        let x_s2 = {
+            let x_s2: <SSE2 as Machine>::u64x4 = s2.vec(xs);
+            x_s2.shuffle3012()
+        };
+        let x_s3 = {
+            let x_s3: <SSSE3 as Machine>::u64x4 = s3.vec(xs);
+            x_s3.shuffle3012()
+        };
+        assert_eq!(x_s2, s2.vec(zs));
+        assert_eq!(x_s3, unsafe { core::mem::transmute(x_s3) });
+
+        let x_s2 = x_s2.shuffle1230();
+        let x_s3 = x_s3.shuffle1230();
+        assert_eq!(x_s2, s2.vec(xs));
+        assert_eq!(x_s3, unsafe { core::mem::transmute(x_s3) });
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_lanes_u32x4() {
+        let xs = [0x1, 0x2, 0x3, 0x4];
+
+        let s2 = unsafe { SSE2::instance() };
+        let s3 = unsafe { SSSE3::instance() };
+        let s4 = unsafe { SSE41::instance() };
+
+        {
+            let x_s2: <SSE2 as Machine>::u32x4 = s2.vec(xs);
+            let y_s2 = <SSE2 as Machine>::u32x4::from_lanes(xs);
+            assert_eq!(x_s2, y_s2);
+            assert_eq!(xs, y_s2.to_lanes());
+        }
+
+        {
+            let x_s3: <SSSE3 as Machine>::u32x4 = s3.vec(xs);
+            let y_s3 = <SSSE3 as Machine>::u32x4::from_lanes(xs);
+            assert_eq!(x_s3, y_s3);
+            assert_eq!(xs, y_s3.to_lanes());
+        }
+
+        {
+            let x_s4: <SSE41 as Machine>::u32x4 = s4.vec(xs);
+            let y_s4 = <SSE41 as Machine>::u32x4::from_lanes(xs);
+            assert_eq!(x_s4, y_s4);
+            assert_eq!(xs, y_s4.to_lanes());
+        }
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_lanes_u64x2() {
+        let xs = [0x1, 0x2];
+
+        let s2 = unsafe { SSE2::instance() };
+        let s3 = unsafe { SSSE3::instance() };
+        let s4 = unsafe { SSE41::instance() };
+
+        {
+            let x_s2: <SSE2 as Machine>::u64x2 = s2.vec(xs);
+            let y_s2 = <SSE2 as Machine>::u64x2::from_lanes(xs);
+            assert_eq!(x_s2, y_s2);
+            assert_eq!(xs, y_s2.to_lanes());
+        }
+
+        {
+            let x_s3: <SSSE3 as Machine>::u64x2 = s3.vec(xs);
+            let y_s3 = <SSSE3 as Machine>::u64x2::from_lanes(xs);
+            assert_eq!(x_s3, y_s3);
+            assert_eq!(xs, y_s3.to_lanes());
+        }
+
+        {
+            let x_s4: <SSE41 as Machine>::u64x2 = s4.vec(xs);
+            let y_s4 = <SSE41 as Machine>::u64x2::from_lanes(xs);
+            assert_eq!(x_s4, y_s4);
+            assert_eq!(xs, y_s4.to_lanes());
+        }
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_vec4_u32x4_s2() {
+        let xs = [0x1, 0x2, 0x3, 0x4];
+        let s2 = unsafe { SSE2::instance() };
+
+        let mut x_s2: <SSE2 as Machine>::u32x4 = s2.vec(xs);
+        assert_eq!(x_s2.extract(0), 1);
+        assert_eq!(x_s2.extract(1), 2);
+        assert_eq!(x_s2.extract(2), 3);
+        assert_eq!(x_s2.extract(3), 4);
+
+        x_s2 = x_s2.insert(5, 0);
+        x_s2 = x_s2.insert(6, 1);
+        x_s2 = x_s2.insert(7, 2);
+        x_s2 = x_s2.insert(8, 3);
+        assert_eq!(x_s2.extract(0), 5);
+        assert_eq!(x_s2.extract(1), 6);
+        assert_eq!(x_s2.extract(2), 7);
+        assert_eq!(x_s2.extract(3), 8);
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_vec4_u32x4_s4() {
+        let xs = [0x1, 0x2, 0x3, 0x4];
+        let s4 = unsafe { SSE41::instance() };
+
+        let mut x_s4: <SSE41 as Machine>::u32x4 = s4.vec(xs);
+        assert_eq!(x_s4.extract(0), 1);
+        assert_eq!(x_s4.extract(1), 2);
+        assert_eq!(x_s4.extract(2), 3);
+        assert_eq!(x_s4.extract(3), 4);
+
+        x_s4 = x_s4.insert(5, 0);
+        x_s4 = x_s4.insert(6, 1);
+        x_s4 = x_s4.insert(7, 2);
+        x_s4 = x_s4.insert(8, 3);
+        assert_eq!(x_s4.extract(0), 5);
+        assert_eq!(x_s4.extract(1), 6);
+        assert_eq!(x_s4.extract(2), 7);
+        assert_eq!(x_s4.extract(3), 8);
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_vec2_u64x2_s2() {
+        let xs = [0x1, 0x2];
+        let s2 = unsafe { SSE2::instance() };
+        let mut x_s2: <SSE2 as Machine>::u64x2 = s2.vec(xs);
+        assert_eq!(x_s2.extract(0), 1);
+        assert_eq!(x_s2.extract(1), 2);
+        x_s2 = x_s2.insert(5, 0);
+        x_s2 = x_s2.insert(6, 1);
+        assert_eq!(x_s2.extract(0), 5);
+        assert_eq!(x_s2.extract(1), 6);
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_vec4_u64x2_s4() {
+        let xs = [0x1, 0x2];
+        let s4 = unsafe { SSE41::instance() };
+        let mut x_s4: <SSE41 as Machine>::u64x2 = s4.vec(xs);
+        assert_eq!(x_s4.extract(0), 1);
+        assert_eq!(x_s4.extract(1), 2);
+        x_s4 = x_s4.insert(5, 0);
+        x_s4 = x_s4.insert(6, 1);
+        assert_eq!(x_s4.extract(0), 5);
+        assert_eq!(x_s4.extract(1), 6);
     }
 }

@@ -335,10 +335,11 @@ pub mod machine {
         impl<S3: Copy, S4: Copy, NI: Copy> Machine for Machine86<S3, S4, NI>
         where
             sse2::u128x1_sse2<S3, S4, NI>: Swap64,
-            sse2::u32x4_sse2<S3, S4, NI>: RotateEachWord32,
-            sse2::u64x2_sse2<S3, S4, NI>: RotateEachWord32,
-            sse2::u32x4_sse2<S3, S4, NI>: BSwap,
-            sse2::u64x2_sse2<S3, S4, NI>: BSwap,
+            sse2::u64x2_sse2<S3, S4, NI>:
+                BSwap + RotateEachWord32 + MultiLane<[u64; 2]> + Vec2<u64>,
+            sse2::u32x4_sse2<S3, S4, NI>:
+                BSwap + RotateEachWord32 + MultiLane<[u32; 4]> + Vec4<u32>,
+            sse2::u64x4_sse2<S3, S4, NI>: BSwap + Words4,
             sse2::u128x1_sse2<S3, S4, NI>: BSwap,
             sse2::u128x2_sse2<S3, S4, NI>: Into<sse2::u64x2x2_sse2<S3, S4, NI>>,
             sse2::u128x2_sse2<S3, S4, NI>: Into<sse2::u64x4_sse2<S3, S4, NI>>,
