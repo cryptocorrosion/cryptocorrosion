@@ -81,22 +81,20 @@ pub struct State<V> {
     pub c: V,
     pub d: V,
 }
+
 #[inline(always)]
 pub fn round<V: ArithOps + BitOps32>(mut x: State<V>) -> State<V> {
     x.a += x.b;
-    x.d ^= x.a;
-    x.d = x.d.rotate_each_word_right16();
+    x.d = (x.d ^ x.a).rotate_each_word_right16();
     x.c += x.d;
-    x.b ^= x.c;
-    x.b = x.b.rotate_each_word_right20();
+    x.b = (x.b ^ x.c).rotate_each_word_right20();
     x.a += x.b;
-    x.d ^= x.a;
-    x.d = x.d.rotate_each_word_right24();
+    x.d = (x.d ^ x.a).rotate_each_word_right24();
     x.c += x.d;
-    x.b ^= x.c;
-    x.b = x.b.rotate_each_word_right25();
+    x.b = (x.b ^ x.c).rotate_each_word_right25();
     x
 }
+
 #[inline(always)]
 pub fn diagonalize<V: LaneWords4>(mut x: State<V>) -> State<V> {
     x.b = x.b.shuffle_lane_words3012();
