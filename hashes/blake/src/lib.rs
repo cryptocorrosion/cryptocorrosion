@@ -15,7 +15,7 @@ extern crate packed_simd_crate;
 extern crate ppv_null;
 #[cfg(all(feature = "simd", not(feature = "packed_simd")))]
 #[macro_use]
-extern crate simd;
+pub extern crate simd;
 #[cfg(feature = "std")]
 #[macro_use]
 extern crate lazy_static;
@@ -95,9 +95,45 @@ fn undiagonalize<X4: Words4>((a, b, c, d): (X4, X4, X4, X4)) -> (X4, X4, X4, X4)
 
 macro_rules! define_compressor {
     ($compressor:ident, $storage:ident, $word:ident, $Bufsz:ty, $deserializer:path, $uval:expr, $rounds:expr, $round:ident, $X4:ident) => {
-        #[derive(Clone, Copy)]
-        pub(crate) struct $compressor {
+        #[derive(Clone, Copy, Default)]
+        pub struct $compressor {
             h: [$storage; 2],
+        }
+
+        #[allow(non_snake_case)]
+        pub mod $X4 {
+            use super::*;
+            #[inline(always)]
+            pub fn put_block<M: Machine>(mach: M, state: &mut $compressor, block: &GenericArray<u8, $Bufsz>, t: ($word, $word)) {
+                const U: [$word; 16] = $uval;
+
+                let mut m = [0; 16];
+                for (mx, b) in m
+                    .iter_mut()
+                    .zip(block.chunks_exact(mem::size_of::<$word>()))
+                {
+                    *mx = $deserializer(b);
+                }
+
+                let u = (mach.vec([U[0], U[1], U[2], U[3]]), mach.vec([U[4], U[5], U[6], U[7]]));
+                let mut xs: (M::$X4, M::$X4, _, _) = (mach.unpack(state.h[0]), mach.unpack(state.h[1]), u.0, u.1);
+                xs.3 ^= mach.vec([t.0, t.0, t.1, t.1]);
+                for sigma in &SIGMA[..$rounds] {
+                    macro_rules! m0 { ($e:expr) => (m[sigma[$e] as usize] ^ U[sigma[$e + 1] as usize]) }
+                    macro_rules! m1 { ($e:expr) => (m[sigma[$e + 1] as usize] ^ U[sigma[$e] as usize]) }
+                    // column step
+                    let m0 = mach.vec([m0!(0), m0!(2), m0!(4), m0!(6)]);
+                    let m1 = mach.vec([m1!(0), m1!(2), m1!(4), m1!(6)]);
+                    xs = $round::<M>(xs, m0, m1);
+                    // diagonal step
+                    let m0 = mach.vec([m0!(8), m0!(10), m0!(12), m0!(14)]);
+                    let m1 = mach.vec([m1!(8), m1!(10), m1!(12), m1!(14)]);
+                    xs = undiagonalize($round::<M>(diagonalize(xs), m0, m1));
+                }
+                let h: (M::$X4, M::$X4) = (mach.unpack(state.h[0]), mach.unpack(state.h[1]));
+                state.h[0] = (h.0 ^ xs.0 ^ xs.2).into();
+                state.h[1] = (h.1 ^ xs.1 ^ xs.3).into();
+            }
         }
 
         impl $compressor {
@@ -105,34 +141,7 @@ macro_rules! define_compressor {
             fn put_block(&mut self, block: &GenericArray<u8, $Bufsz>, t: ($word, $word)) {
                 dispatch!(mach, M, {
                     fn put_block(state: &mut $compressor, block: &GenericArray<u8, $Bufsz>, t: ($word, $word)) {
-                        const U: [$word; 16] = $uval;
-
-                        let mut m = [0; 16];
-                        for (mx, b) in m
-                            .iter_mut()
-                            .zip(block.chunks_exact(mem::size_of::<$word>()))
-                        {
-                            *mx = $deserializer(b);
-                        }
-
-                        let u = (mach.vec([U[0], U[1], U[2], U[3]]), mach.vec([U[4], U[5], U[6], U[7]]));
-                        let mut xs: (M::$X4, M::$X4, _, _) = (mach.unpack(state.h[0]), mach.unpack(state.h[1]), u.0, u.1);
-                        xs.3 ^= mach.vec([t.0, t.0, t.1, t.1]);
-                        for sigma in &SIGMA[..$rounds] {
-                            macro_rules! m0 { ($e:expr) => (m[sigma[$e] as usize] ^ U[sigma[$e + 1] as usize]) }
-                            macro_rules! m1 { ($e:expr) => (m[sigma[$e + 1] as usize] ^ U[sigma[$e] as usize]) }
-                            // column step
-                            let m0 = mach.vec([m0!(0), m0!(2), m0!(4), m0!(6)]);
-                            let m1 = mach.vec([m1!(0), m1!(2), m1!(4), m1!(6)]);
-                            xs = $round::<M>(xs, m0, m1);
-                            // diagonal step
-                            let m0 = mach.vec([m0!(8), m0!(10), m0!(12), m0!(14)]);
-                            let m1 = mach.vec([m1!(8), m1!(10), m1!(12), m1!(14)]);
-                            xs = undiagonalize($round::<M>(diagonalize(xs), m0, m1));
-                        }
-                        let h: (M::$X4, M::$X4) = (mach.unpack(state.h[0]), mach.unpack(state.h[1]));
-                        state.h[0] = (h.0 ^ xs.0 ^ xs.2).into();
-                        state.h[1] = (h.1 ^ xs.1 ^ xs.3).into();
+                            $X4::put_block(mach, state, block, t)
                     }
                 });
                 put_block(self, block, t);

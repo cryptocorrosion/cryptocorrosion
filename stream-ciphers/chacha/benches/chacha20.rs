@@ -8,14 +8,6 @@ use stream_cipher::{NewStreamCipher, SyncStreamCipher};
 use test::Bencher;
 
 #[bench]
-pub fn stream_1k(b: &mut Bencher) {
-    let mut state = ChaCha20::new_var(&[0; 32], &[0; 8]).unwrap();
-    let mut result = [0; 1024];
-    b.iter(|| state.apply_keystream(&mut result));
-    b.bytes = 1024;
-}
-
-#[bench]
 pub fn stream_10k(b: &mut Bencher) {
     let mut state = ChaCha20::new_var(&[0; 32], &[0; 8]).unwrap();
     let mut result = [0; 1024];
@@ -25,16 +17,4 @@ pub fn stream_10k(b: &mut Bencher) {
         }
     });
     b.bytes = 10240;
-}
-
-#[bench]
-pub fn stream_100k(b: &mut Bencher) {
-    let mut state = ChaCha20::new_var(&[0; 32], &[0; 8]).unwrap();
-    let mut result = [0; 10240];
-    b.iter(|| {
-        for _ in 0..10 {
-            state.apply_keystream(&mut result)
-        }
-    });
-    b.bytes = 102400;
 }

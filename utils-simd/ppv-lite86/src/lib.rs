@@ -375,6 +375,7 @@ pub mod machine {
         /// AVX but not AVX2: only 128-bit integer operations, but use VEX versions of everything
         /// to avoid expensive SSE/VEX conflicts.
         pub type AVX = Machine86<YesS3, YesS4, NoNI>;
+        pub type AVX2 = Machine86<YesS3, YesS4, NoNI>;
     }
 }
 
@@ -409,13 +410,21 @@ impl Store<vec128_storage> for vec128_storage {
     }
 }
 impl<'a> Into<&'a [u32; 4]> for &'a vec128_storage {
+    #[inline(always)]
     fn into(self) -> &'a [u32; 4] {
         unsafe { &self.u32x4 }
     }
 }
 impl Into<vec128_storage> for [u32; 4] {
+    #[inline(always)]
     fn into(self) -> vec128_storage {
         vec128_storage { u32x4: self }
+    }
+}
+impl Default for vec128_storage {
+    #[inline(always)]
+    fn default() -> Self {
+        vec128_storage { u128x1: [0] }
     }
 }
 
@@ -437,6 +446,12 @@ impl Into<vec256_storage> for [u64; 4] {
         vec256_storage { u64x4: self }
     }
 }
+impl Default for vec256_storage {
+    #[inline(always)]
+    fn default() -> Self {
+        vec256_storage { u128x2: [0, 0] }
+    }
+}
 
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone)]
@@ -450,6 +465,14 @@ pub union vec512_storage {
 impl_into!(vec512_storage, [u32; 16], u32x16);
 impl_into!(vec512_storage, [u64; 8], u64x8);
 impl_into!(vec512_storage, [u128; 4], u128x4);
+impl Default for vec512_storage {
+    #[inline(always)]
+    fn default() -> Self {
+        vec512_storage {
+            u128x4: [0, 0, 0, 0],
+        }
+    }
+}
 
 pub trait Store<S> {
     unsafe fn unpack(p: S) -> Self;
@@ -480,14 +503,23 @@ macro_rules! dispatch {
             #[cold]
             fn dispatch_init() -> FnTy {
                 use std::arch::x86_64::*;
-                if is_x86_feature_detected!("avx") {
+                if is_x86_feature_detected!("avx2") {
+                    #[target_feature(enable = "avx2")]
+                    unsafe fn impl_avx2($($arg: $argty),*) -> $ret {
+                        fn_impl($crate::machine::x86::AVX2::instance(), $($arg),*)
+                    }
+                    impl_avx2
+                } else if is_x86_feature_detected!("avx") {
                     #[target_feature(enable = "avx")]
+                    #[target_feature(enable = "sse4.1")]
+                    #[target_feature(enable = "ssse3")]
                     unsafe fn impl_avx($($arg: $argty),*) -> $ret {
                         fn_impl($crate::machine::x86::AVX::instance(), $($arg),*)
                     }
                     impl_avx
                 } else if is_x86_feature_detected!("sse4.1") {
                     #[target_feature(enable = "sse4.1")]
+                    #[target_feature(enable = "ssse3")]
                     unsafe fn impl_sse41($($arg: $argty),*) -> $ret {
                         fn_impl($crate::machine::x86::SSE41::instance(), $($arg),*)
                     }

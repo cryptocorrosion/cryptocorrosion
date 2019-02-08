@@ -46,7 +46,7 @@ extern crate packed_simd_crate;
 extern crate ppv_null;
 #[cfg(all(feature = "simd", not(feature = "packed_simd")))]
 #[macro_use]
-extern crate simd;
+pub extern crate simd;
 #[cfg(feature = "packed_simd")]
 use crypto_simd::packed_simd::u32x4x4;
 #[cfg(feature = "packed_simd")]
@@ -146,8 +146,15 @@ impl ChaCha {
     }
 }
 
-dispatch!(m, Mach, {
-    fn refill_wide(state: &mut ChaCha, drounds: u32, out: &mut [u8; BUFSZ]) {
+mod mach {
+    use super::*;
+    #[inline(always)]
+    pub fn refill_wide_impl<Mach: Machine>(
+        m: Mach,
+        state: &mut ChaCha,
+        drounds: u32,
+        out: &mut [u8; BUFSZ],
+    ) {
         let k = m.vec([0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574]);
         // TODO: endian
         let inc = m.vec([1, 0]);
@@ -193,6 +200,14 @@ dispatch!(m, Mach, {
             (c + sc).write_le(words.next().unwrap());
             (d + sd).write_le(words.next().unwrap());
         }
+    }
+}
+/// XXX unstable, only exposed for benchmarks
+pub use self::mach::refill_wide_impl;
+
+dispatch!(m, Mach, {
+    fn refill_wide(state: &mut ChaCha, drounds: u32, out: &mut [u8; BUFSZ]) {
+        refill_wide_impl(m, state, drounds, out);
     }
 });
 
@@ -265,6 +280,8 @@ mod chacha_any {
         pub _is_x: IsX,
     }
 }
+/// XXX unstable, only exposed for benchmarks
+pub use self::chacha_any::ChaCha as ChaChaState;
 use self::chacha_any::*;
 
 trait AsBool {
