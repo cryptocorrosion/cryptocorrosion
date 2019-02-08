@@ -368,7 +368,7 @@ impl<S3, S4, NI> MultiLane<[u128; 1]> for u128x1_sse2<S3, S4, NI> {
     }
 }
 
-impl<S3, S4, NI> MultiLane<[u64; 4]> for u64x2x2_sse2<S3, S4, NI>
+impl<S3, S4, NI> MultiLane<[u64; 4]> for u64x4_sse2<S3, S4, NI>
 where
     u64x2_sse2<S3, S4, NI>: MultiLane<[u64; 2]> + Copy,
 {
@@ -383,7 +383,7 @@ where
             u64x2_sse2::from_lanes([xs[0], xs[1]]),
             u64x2_sse2::from_lanes([xs[2], xs[3]]),
         );
-        x2([a, b])
+        x2::new([a, b])
     }
 }
 
@@ -503,15 +503,15 @@ impl<S3, S4, NI> Words4 for u32x4_sse2<S3, S4, NI> {
     }
 }
 
-impl<S3, S4, NI> Words4 for u64x2x2_sse2<S3, S4, NI> {
+impl<S3, S4, NI> Words4 for u64x4_sse2<S3, S4, NI> {
     #[inline(always)]
     fn shuffle2301(self) -> Self {
-        x2([u64x2_sse2::new(self.0[1].x), u64x2_sse2::new(self.0[0].x)])
+        x2::new([u64x2_sse2::new(self.0[1].x), u64x2_sse2::new(self.0[0].x)])
     }
     #[inline(always)]
     fn shuffle3012(self) -> Self {
         unsafe {
-            x2([
+            x2::new([
                 u64x2_sse2::new(_mm_alignr_epi8(self.0[1].x, self.0[0].x, 8)),
                 u64x2_sse2::new(_mm_alignr_epi8(self.0[0].x, self.0[1].x, 8)),
             ])
@@ -520,7 +520,7 @@ impl<S3, S4, NI> Words4 for u64x2x2_sse2<S3, S4, NI> {
     #[inline(always)]
     fn shuffle1230(self) -> Self {
         unsafe {
-            x2([
+            x2::new([
                 u64x2_sse2::new(_mm_alignr_epi8(self.0[0].x, self.0[1].x, 8)),
                 u64x2_sse2::new(_mm_alignr_epi8(self.0[1].x, self.0[0].x, 8)),
             ])
@@ -701,23 +701,34 @@ impl<S4, NI> Swap64 for u128x1_sse2<NoS3, S4, NI> {
     }
 }
 
+#[derive(Copy, Clone)]
+pub struct G0;
+#[derive(Copy, Clone)]
+pub struct G1;
+
 #[derive(Copy, Clone, Default)]
 #[allow(non_camel_case_types)]
-pub struct x2<W>([W; 2]);
+pub struct x2<W, G>([W; 2], PhantomData<G>);
+impl<W, G> x2<W, G> {
+    #[inline(always)]
+    fn new(xs: [W; 2]) -> Self {
+        x2(xs, PhantomData)
+    }
+}
 macro_rules! fwd_binop_x2 {
     ($trait:ident, $fn:ident) => {
-        impl<W: $trait + Copy> $trait for x2<W> {
-            type Output = x2<W::Output>;
+        impl<W: $trait + Copy, G> $trait for x2<W, G> {
+            type Output = x2<W::Output, G>;
             #[inline(always)]
             fn $fn(self, rhs: Self) -> Self::Output {
-                x2([self.0[0].$fn(rhs.0[0]), self.0[1].$fn(rhs.0[1])])
+                x2::new([self.0[0].$fn(rhs.0[0]), self.0[1].$fn(rhs.0[1])])
             }
         }
     };
 }
 macro_rules! fwd_binop_assign_x2 {
     ($trait:ident, $fn_assign:ident) => {
-        impl<W: $trait + Copy> $trait for x2<W> {
+        impl<W: $trait + Copy, G> $trait for x2<W, G> {
             #[inline(always)]
             fn $fn_assign(&mut self, rhs: Self) {
                 (self.0[0]).$fn_assign(rhs.0[0]);
@@ -730,11 +741,11 @@ macro_rules! fwd_unop_x2 {
     ($fn:ident) => {
         #[inline(always)]
         fn $fn(self) -> Self {
-            x2([self.0[0].$fn(), self.0[1].$fn()])
+            x2::new([self.0[0].$fn(), self.0[1].$fn()])
         }
     };
 }
-impl<W> RotateEachWord32 for x2<W>
+impl<W, G> RotateEachWord32 for x2<W, G>
 where
     W: Copy + RotateEachWord32,
 {
@@ -747,17 +758,37 @@ where
     fwd_unop_x2!(rotate_each_word_right24);
     fwd_unop_x2!(rotate_each_word_right25);
 }
-impl<W> RotateEachWord64 for x2<W>
+impl<W, G> RotateEachWord64 for x2<W, G>
 where
     W: Copy + RotateEachWord64,
 {
     fwd_unop_x2!(rotate_each_word_right32);
 }
-impl<W> RotateEachWord128 for x2<W> where W: RotateEachWord128 {}
-impl<W> BitOps0 for x2<W> where W: BitOps0 {}
-impl<W> BitOps32 for x2<W> where W: BitOps32 + BitOps0 {}
-impl<W> BitOps64 for x2<W> where W: BitOps64 + BitOps0 {}
-impl<W> BitOps128 for x2<W> where W: BitOps128 + BitOps0 {}
+impl<W, G> RotateEachWord128 for x2<W, G> where W: RotateEachWord128 {}
+impl<W, G> BitOps0 for x2<W, G>
+where
+    W: BitOps0,
+    G: Copy,
+{
+}
+impl<W, G> BitOps32 for x2<W, G>
+where
+    W: BitOps32 + BitOps0,
+    G: Copy,
+{
+}
+impl<W, G> BitOps64 for x2<W, G>
+where
+    W: BitOps64 + BitOps0,
+    G: Copy,
+{
+}
+impl<W, G> BitOps128 for x2<W, G>
+where
+    W: BitOps128 + BitOps0,
+    G: Copy,
+{
+}
 fwd_binop_x2!(BitAnd, bitand);
 fwd_binop_x2!(BitOr, bitor);
 fwd_binop_x2!(BitXor, bitxor);
@@ -765,23 +796,28 @@ fwd_binop_x2!(AndNot, andnot);
 fwd_binop_assign_x2!(BitAndAssign, bitand_assign);
 fwd_binop_assign_x2!(BitOrAssign, bitor_assign);
 fwd_binop_assign_x2!(BitXorAssign, bitxor_assign);
-impl<W> ArithOps for x2<W> where W: ArithOps {}
+impl<W, G> ArithOps for x2<W, G>
+where
+    W: ArithOps,
+    G: Copy,
+{
+}
 fwd_binop_x2!(Add, add);
 fwd_binop_assign_x2!(AddAssign, add_assign);
-impl<W: Not + Copy> Not for x2<W> {
-    type Output = x2<W::Output>;
+impl<W: Not + Copy, G> Not for x2<W, G> {
+    type Output = x2<W::Output, G>;
     #[inline(always)]
     fn not(self) -> Self::Output {
-        x2([self.0[0].not(), self.0[1].not()])
+        x2::new([self.0[0].not(), self.0[1].not()])
     }
 }
-impl<W> UnsafeFrom<[W; 2]> for x2<W> {
+impl<W, G> UnsafeFrom<[W; 2]> for x2<W, G> {
     #[inline(always)]
     unsafe fn unsafe_from(xs: [W; 2]) -> Self {
-        x2(xs)
+        x2::new(xs)
     }
 }
-impl<W: Copy> Vec2<W> for x2<W> {
+impl<W: Copy, G> Vec2<W> for x2<W, G> {
     #[inline(always)]
     fn extract(self, i: u32) -> W {
         self.0[i as usize]
@@ -792,25 +828,25 @@ impl<W: Copy> Vec2<W> for x2<W> {
         self
     }
 }
-impl<W: Copy + Store<vec128_storage>> Store<vec256_storage> for x2<W> {
+impl<W: Copy + Store<vec128_storage>, G> Store<vec256_storage> for x2<W, G> {
     #[inline(always)]
     unsafe fn unpack(p: vec256_storage) -> Self {
-        x2([W::unpack(p.sse2[0]), W::unpack(p.sse2[1])])
+        x2::new([W::unpack(p.sse2[0]), W::unpack(p.sse2[1])])
     }
 }
-impl<W> From<x2<W>> for vec256_storage
+impl<W, G> From<x2<W, G>> for vec256_storage
 where
     W: Copy,
     vec128_storage: From<W>,
 {
     #[inline(always)]
-    fn from(x: x2<W>) -> Self {
+    fn from(x: x2<W, G>) -> Self {
         vec256_storage {
             sse2: [x.0[0].into(), x.0[1].into()],
         }
     }
 }
-impl<W> Swap64 for x2<W>
+impl<W, G> Swap64 for x2<W, G>
 where
     W: Swap64 + Copy,
 {
@@ -822,25 +858,25 @@ where
     fwd_unop_x2!(swap32);
     fwd_unop_x2!(swap64);
 }
-impl<W: Copy> MultiLane<[W; 2]> for x2<W> {
+impl<W: Copy, G> MultiLane<[W; 2]> for x2<W, G> {
     fn to_lanes(self) -> [W; 2] {
         self.0
     }
     fn from_lanes(lanes: [W; 2]) -> Self {
-        x2(lanes)
+        x2::new(lanes)
     }
 }
-impl<W: BSwap + Copy> BSwap for x2<W> {
+impl<W: BSwap + Copy, G> BSwap for x2<W, G> {
     #[inline(always)]
     fn bswap(self) -> Self {
-        x2([self.0[0].bswap(), self.0[1].bswap()])
+        x2::new([self.0[0].bswap(), self.0[1].bswap()])
     }
 }
-impl<W: StoreBytes + BSwap + Copy> StoreBytes for x2<W> {
+impl<W: StoreBytes + BSwap + Copy, G> StoreBytes for x2<W, G> {
     #[inline(always)]
     unsafe fn unsafe_read_le(input: &[u8]) -> Self {
         let input = input.split_at(16);
-        x2([W::unsafe_read_le(input.0), W::unsafe_read_le(input.1)])
+        x2::new([W::unsafe_read_le(input.0), W::unsafe_read_le(input.1)])
     }
     #[inline(always)]
     unsafe fn unsafe_read_be(input: &[u8]) -> Self {
@@ -1077,11 +1113,13 @@ impl<W: Copy + LaneWords4> LaneWords4 for x4<W> {
 }
 
 #[allow(non_camel_case_types)]
-pub type u32x4x2_sse2<S3, S4, NI> = x2<u32x4_sse2<S3, S4, NI>>;
+pub type u32x4x2_sse2<S3, S4, NI> = x2<u32x4_sse2<S3, S4, NI>, G0>;
 #[allow(non_camel_case_types)]
-pub type u64x2x2_sse2<S3, S4, NI> = x2<u64x2_sse2<S3, S4, NI>>;
+pub type u64x2x2_sse2<S3, S4, NI> = x2<u64x2_sse2<S3, S4, NI>, G0>;
 #[allow(non_camel_case_types)]
-pub type u128x2_sse2<S3, S4, NI> = x2<u128x1_sse2<S3, S4, NI>>;
+pub type u64x4_sse2<S3, S4, NI> = x2<u64x2_sse2<S3, S4, NI>, G1>;
+#[allow(non_camel_case_types)]
+pub type u128x2_sse2<S3, S4, NI> = x2<u128x1_sse2<S3, S4, NI>, G0>;
 
 #[allow(non_camel_case_types)]
 pub type u32x4x4_sse2<S3, S4, NI> = x4<u32x4_sse2<S3, S4, NI>>;
@@ -1104,6 +1142,13 @@ where
     u64x2x2_sse2<S3, S4, NI>: MultiLane<[<Machine86<S3, S4, NI> as Machine>::u64x2; 2]>,
     u64x2x2_sse2<S3, S4, NI>: Vec2<<Machine86<S3, S4, NI> as Machine>::u64x2>,
 {}
+impl<S3: Copy, S4: Copy, NI: Copy> u64x4<Machine86<S3, S4, NI>> for u64x4_sse2<S3, S4, NI>
+where
+    u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap,
+    Machine86<S3, S4, NI>: Machine,
+    u64x4_sse2<S3, S4, NI>: MultiLane<[u64; 4]>,
+    u64x4_sse2<S3, S4, NI>: Vec4<u64>,
+{}
 impl<S3: Copy, S4: Copy, NI: Copy> u128x2<Machine86<S3, S4, NI>> for u128x2_sse2<S3, S4, NI>
 where
     u128x1_sse2<S3, S4, NI>: Swap64 + BSwap,
@@ -1112,7 +1157,34 @@ where
     u128x2_sse2<S3, S4, NI>: Vec2<<Machine86<S3, S4, NI> as Machine>::u128x1>,
     u128x2_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u32x4x2>,
     u128x2_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u64x2x2>,
+    u128x2_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u64x4>,
 {}
+impl<S3, S4, NI> Vec4<u64> for u64x4_sse2<S3, S4, NI>
+where
+    u64x2_sse2<S3, S4, NI>: Copy,
+{
+    #[inline(always)]
+    fn extract(self, i: u32) -> u64 {
+        match i {
+            0 => self.0[0].extract(0),
+            1 => self.0[0].extract(1),
+            2 => self.0[1].extract(0),
+            3 => self.0[1].extract(1),
+            _ => panic!(),
+        }
+    }
+    #[inline(always)]
+    fn insert(mut self, w: u64, i: u32) -> Self {
+        match i {
+            0 => self.0[0] = self.0[0].insert(w, 0),
+            1 => self.0[0] = self.0[0].insert(w, 1),
+            2 => self.0[1] = self.0[1].insert(w, 0),
+            3 => self.0[1] = self.0[1].insert(w, 1),
+            _ => panic!(),
+        };
+        self
+    }
+}
 
 impl<S3: Copy, S4: Copy, NI: Copy> u32x4x4<Machine86<S3, S4, NI>> for u32x4x4_sse2<S3, S4, NI>
 where
@@ -1140,10 +1212,12 @@ where
 
 macro_rules! impl_into_x {
     ($from:ident, $to:ident) => {
-        impl<S3: Copy, S4: Copy, NI: Copy> From<x2<$from<S3, S4, NI>>> for x2<$to<S3, S4, NI>> {
+        impl<S3: Copy, S4: Copy, NI: Copy, Gf, Gt> From<x2<$from<S3, S4, NI>, Gf>>
+            for x2<$to<S3, S4, NI>, Gt>
+        {
             #[inline(always)]
-            fn from(x: x2<$from<S3, S4, NI>>) -> Self {
-                x2([$to::from(x.0[0]), $to::from(x.0[1])])
+            fn from(x: x2<$from<S3, S4, NI>, Gf>) -> Self {
+                x2::new([$to::from(x.0[0]), $to::from(x.0[1])])
             }
         }
         impl<S3: Copy, S4: Copy, NI: Copy> From<x4<$from<S3, S4, NI>>> for x4<$to<S3, S4, NI>> {

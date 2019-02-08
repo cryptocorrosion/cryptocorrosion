@@ -62,10 +62,10 @@ fn round32<M: Machine>(
 
 #[inline(always)]
 fn round64<M: Machine>(
-    (mut a, mut b, mut c, mut d): (M::u64x2x2, M::u64x2x2, M::u64x2x2, M::u64x2x2),
-    m0: M::u64x2x2,
-    m1: M::u64x2x2,
-) -> (M::u64x2x2, M::u64x2x2, M::u64x2x2, M::u64x2x2) {
+    (mut a, mut b, mut c, mut d): (M::u64x4, M::u64x4, M::u64x4, M::u64x4),
+    m0: M::u64x4,
+    m1: M::u64x4,
+) -> (M::u64x4, M::u64x4, M::u64x4, M::u64x4) {
     a += m0;
     a += b;
     d ^= a;
@@ -284,7 +284,7 @@ define_hasher!(Blake224, u32, 64, U64, 224, U28, BE::write_u32, Compressor256, B
 define_hasher!(Blake256, u32, 64, U64, 256, U32, BE::write_u32, Compressor256, BLAKE256_IV);
 
 #[rustfmt::skip]
-define_compressor!(Compressor512, vec256_storage, u64, U128, BE::read_u64, BLAKE512_U, 16, round64, u64x2x2);
+define_compressor!(Compressor512, vec256_storage, u64, U128, BE::read_u64, BLAKE512_U, 16, round64, u64x4);
 
 #[rustfmt::skip]
 define_hasher!(Blake384, u64, 128, U128, 384, U48, BE::write_u64, Compressor512, BLAKE384_IV);

@@ -167,7 +167,16 @@ pub mod crypto_simd_new_types {
         + Store<vec256_storage>
         + Vec2<M::u64x2>
         + MultiLane<[M::u64x2; 2]>
-        + MultiLane<[u64; 4]> // !
+        + ArithOps
+        + StoreBytes
+        + Into<vec256_storage>
+    {
+}
+    pub trait u64x4<M: Machine>:
+        BitOps64
+        + Store<vec256_storage>
+        + Vec4<u64>
+        + MultiLane<[u64; 4]>
         + ArithOps
         + Words4
         + StoreBytes
@@ -182,6 +191,7 @@ pub mod crypto_simd_new_types {
         + Swap64
         + Into<M::u32x4x2>
         + Into<M::u64x2x2>
+        + Into<M::u64x4>
         + Into<vec256_storage>
     {
 }
@@ -277,6 +287,7 @@ pub trait Machine: Sized + Copy {
 
     type u32x4x2: u32x4x2<Self>;
     type u64x2x2: u64x2x2<Self>;
+    type u64x4: u64x4<Self>;
     type u128x2: u128x2<Self>;
 
     type u32x4x4: u32x4x4<Self>;
@@ -330,6 +341,7 @@ pub mod machine {
             sse2::u64x2_sse2<S3, S4, NI>: BSwap,
             sse2::u128x1_sse2<S3, S4, NI>: BSwap,
             sse2::u128x2_sse2<S3, S4, NI>: Into<sse2::u64x2x2_sse2<S3, S4, NI>>,
+            sse2::u128x2_sse2<S3, S4, NI>: Into<sse2::u64x4_sse2<S3, S4, NI>>,
             sse2::u128x2_sse2<S3, S4, NI>: Into<sse2::u32x4x2_sse2<S3, S4, NI>>,
             sse2::u128x4_sse2<S3, S4, NI>: Into<sse2::u64x2x4_sse2<S3, S4, NI>>,
             sse2::u128x4_sse2<S3, S4, NI>: Into<sse2::u32x4x4_sse2<S3, S4, NI>>,
@@ -340,6 +352,7 @@ pub mod machine {
 
             type u32x4x2 = sse2::u32x4x2_sse2<S3, S4, NI>;
             type u64x2x2 = sse2::u64x2x2_sse2<S3, S4, NI>;
+            type u64x4 = sse2::u64x4_sse2<S3, S4, NI>;
             type u128x2 = sse2::u128x2_sse2<S3, S4, NI>;
 
             type u32x4x4 = sse2::u32x4x4_sse2<S3, S4, NI>;
