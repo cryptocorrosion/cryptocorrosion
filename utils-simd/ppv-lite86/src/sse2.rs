@@ -527,13 +527,13 @@ where
                 }
                 1 => {
                     let mut x = _mm_shuffle_epi32(self.x, 0b0111_1000);
-                    x = _mm_slli_si128(self.x, 4);
+                    x = _mm_slli_si128(x, 4);
                     x = _mm_or_si128(x, _mm_cvtsi32_si128(v as i32));
                     _mm_shuffle_epi32(x, 0b1110_0001)
                 }
                 2 => {
                     let mut x = _mm_shuffle_epi32(self.x, 0b1011_0100);
-                    x = _mm_slli_si128(self.x, 4);
+                    x = _mm_slli_si128(x, 4);
                     x = _mm_or_si128(x, _mm_cvtsi32_si128(v as i32));
                     _mm_shuffle_epi32(x, 0b1100_1001)
                 }
