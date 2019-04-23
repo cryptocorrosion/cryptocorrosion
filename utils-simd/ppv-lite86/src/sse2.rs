@@ -1634,45 +1634,33 @@ mod test {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_vec4_u32x4_s2() {
-        let xs = [0x1, 0x2, 0x3, 0x4];
+        let xs = [1, 2, 3, 4];
         let s2 = unsafe { SSE2::instance() };
-
         let mut x_s2: <SSE2 as Machine>::u32x4 = s2.vec(xs);
         assert_eq!(x_s2.extract(0), 1);
         assert_eq!(x_s2.extract(1), 2);
         assert_eq!(x_s2.extract(2), 3);
         assert_eq!(x_s2.extract(3), 4);
-
-        x_s2 = x_s2.insert(5, 0);
-        x_s2 = x_s2.insert(6, 1);
-        x_s2 = x_s2.insert(7, 2);
-        x_s2 = x_s2.insert(8, 3);
-        assert_eq!(x_s2.extract(0), 5);
-        assert_eq!(x_s2.extract(1), 6);
-        assert_eq!(x_s2.extract(2), 7);
-        assert_eq!(x_s2.extract(3), 8);
+        assert_eq!(x_s2.insert(0xf, 0), s2.vec([0xf, 2, 3, 4]));
+        assert_eq!(x_s2.insert(0xf, 1), s2.vec([1, 0xf, 3, 4]));
+        assert_eq!(x_s2.insert(0xf, 2), s2.vec([1, 2, 0xf, 4]));
+        assert_eq!(x_s2.insert(0xf, 3), s2.vec([1, 2, 3, 0xf]));
     }
 
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_vec4_u32x4_s4() {
-        let xs = [0x1, 0x2, 0x3, 0x4];
+        let xs = [1, 2, 3, 4];
         let s4 = unsafe { SSE41::instance() };
-
         let mut x_s4: <SSE41 as Machine>::u32x4 = s4.vec(xs);
         assert_eq!(x_s4.extract(0), 1);
         assert_eq!(x_s4.extract(1), 2);
         assert_eq!(x_s4.extract(2), 3);
         assert_eq!(x_s4.extract(3), 4);
-
-        x_s4 = x_s4.insert(5, 0);
-        x_s4 = x_s4.insert(6, 1);
-        x_s4 = x_s4.insert(7, 2);
-        x_s4 = x_s4.insert(8, 3);
-        assert_eq!(x_s4.extract(0), 5);
-        assert_eq!(x_s4.extract(1), 6);
-        assert_eq!(x_s4.extract(2), 7);
-        assert_eq!(x_s4.extract(3), 8);
+        assert_eq!(x_s4.insert(0xf, 0), s4.vec([0xf, 2, 3, 4]));
+        assert_eq!(x_s4.insert(0xf, 1), s4.vec([1, 0xf, 3, 4]));
+        assert_eq!(x_s4.insert(0xf, 2), s4.vec([1, 2, 0xf, 4]));
+        assert_eq!(x_s4.insert(0xf, 3), s4.vec([1, 2, 3, 0xf]));
     }
 
     #[test]
@@ -1683,10 +1671,8 @@ mod test {
         let mut x_s2: <SSE2 as Machine>::u64x2 = s2.vec(xs);
         assert_eq!(x_s2.extract(0), 1);
         assert_eq!(x_s2.extract(1), 2);
-        x_s2 = x_s2.insert(5, 0);
-        x_s2 = x_s2.insert(6, 1);
-        assert_eq!(x_s2.extract(0), 5);
-        assert_eq!(x_s2.extract(1), 6);
+        assert_eq!(x_s2.insert(0xf, 0), s2.vec([0xf, 2]));
+        assert_eq!(x_s2.insert(0xf, 1), s2.vec([1, 0xf]));
     }
 
     #[test]
@@ -1697,9 +1683,7 @@ mod test {
         let mut x_s4: <SSE41 as Machine>::u64x2 = s4.vec(xs);
         assert_eq!(x_s4.extract(0), 1);
         assert_eq!(x_s4.extract(1), 2);
-        x_s4 = x_s4.insert(5, 0);
-        x_s4 = x_s4.insert(6, 1);
-        assert_eq!(x_s4.extract(0), 5);
-        assert_eq!(x_s4.extract(1), 6);
+        assert_eq!(x_s4.insert(0xf, 0), s4.vec([0xf, 2]));
+        assert_eq!(x_s4.insert(0xf, 1), s4.vec([1, 0xf]));
     }
 }
