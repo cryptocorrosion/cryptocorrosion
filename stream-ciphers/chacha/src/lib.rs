@@ -38,6 +38,7 @@ extern crate hex_literal;
 #[cfg(feature = "std")]
 #[macro_use]
 extern crate lazy_static;
+#[cfg(feature = "rustcrypto_api")]
 pub extern crate stream_cipher;
 
 #[cfg(feature = "packed_simd")]
@@ -58,9 +59,14 @@ use simd::Machine;
 
 use byteorder::{ByteOrder, LE};
 use core::{cmp, u32, u64};
-use stream_cipher::generic_array::typenum::{Unsigned, U10, U12, U24, U32, U4, U6, U8};
-use stream_cipher::generic_array::{ArrayLength, GenericArray};
-use stream_cipher::{LoopError, NewStreamCipher, SyncStreamCipher, SyncStreamCipherSeek};
+
+#[cfg(not(feature = "rustcrypto_api"))]
+extern crate generic_array;
+#[cfg(feature = "rustcrypto_api")]
+use stream_cipher::generic_array;
+
+use self::generic_array::typenum::{Unsigned, U10, U12, U24, U32, U4, U6, U8};
+use self::generic_array::{ArrayLength, GenericArray};
 
 use simd::{vec128_storage, ArithOps, BitOps32, LaneWords4, MultiLane, StoreBytes, Vec2, Vec4};
 
@@ -301,7 +307,7 @@ impl Buffer {
         &mut self,
         mut data: &mut [u8],
         drounds: u32,
-    ) -> Result<(), LoopError> {
+    ) -> Result<(), ()> {
         // Lazy fill: after a seek() we may be partway into a block we don't have yet.
         // We can do this before the overflow check because this is not an effect of the current
         // operation.
@@ -319,7 +325,7 @@ impl Buffer {
         let blocks_needed = datalen / BLOCK64 + u64::from(datalen % BLOCK64 != 0);
         let (l, o) = self.len.overflowing_sub(blocks_needed);
         if o && !self.fresh {
-            return Err(LoopError);
+            return Err(());
         }
         self.len = l;
         self.fresh &= blocks_needed == 0;
@@ -377,7 +383,7 @@ dispatch_light128!(m, Mach, {
 
 #[cfg(test)]
 impl<NonceSize, Rounds: Unsigned, IsX> ChaChaAny<NonceSize, Rounds, IsX> {
-    pub fn try_apply_keystream_narrow(&mut self, data: &mut [u8]) -> Result<(), LoopError> {
+    pub fn try_apply_keystream_narrow(&mut self, data: &mut [u8]) -> Result<(), ()> {
         self.state
             .try_apply_keystream::<WideDisabled>(data, Rounds::U32)
     }
@@ -404,34 +410,6 @@ dispatch_light128!(m, Mach, {
         }
     }
 });
-
-impl<NonceSize, Rounds> NewStreamCipher for ChaChaAny<NonceSize, Rounds, O>
-where
-    NonceSize: Unsigned + ArrayLength<u8> + Default,
-    Rounds: Default,
-{
-    type KeySize = U32;
-    type NonceSize = NonceSize;
-    #[inline]
-    fn new(
-        key: &GenericArray<u8, Self::KeySize>,
-        nonce: &GenericArray<u8, Self::NonceSize>,
-    ) -> Self {
-        let nonce_len = nonce.len();
-        ChaChaAny {
-            state: Buffer {
-                state: init_chacha(key, nonce),
-                out: [0; BLOCK],
-                have: 0,
-                len: if nonce_len == 12 { SMALL_LEN } else { BIG_LEN },
-                fresh: nonce_len != 12,
-            },
-            _nonce_size: Default::default(),
-            _rounds: Default::default(),
-            _is_x: Default::default(),
-        }
-    }
-}
 
 dispatch_light128!(m, Mach, {
     fn init_chacha_x(
@@ -461,13 +439,31 @@ dispatch_light128!(m, Mach, {
     }
 });
 
-impl<Rounds: Unsigned + Default> NewStreamCipher for ChaChaAny<U24, Rounds, X> {
-    type KeySize = U32;
-    type NonceSize = U24;
-    fn new(
-        key: &GenericArray<u8, Self::KeySize>,
-        nonce: &GenericArray<u8, Self::NonceSize>,
-    ) -> Self {
+impl<NonceSize, Rounds> ChaChaAny<NonceSize, Rounds, O>
+where
+    NonceSize: Unsigned + ArrayLength<u8> + Default,
+    Rounds: Default,
+{
+    #[inline]
+    fn new(key: &GenericArray<u8, U32>, nonce: &GenericArray<u8, NonceSize>) -> Self {
+        let nonce_len = nonce.len();
+        ChaChaAny {
+            state: Buffer {
+                state: init_chacha(key, nonce),
+                out: [0; BLOCK],
+                have: 0,
+                len: if nonce_len == 12 { SMALL_LEN } else { BIG_LEN },
+                fresh: nonce_len != 12,
+            },
+            _nonce_size: Default::default(),
+            _rounds: Default::default(),
+            _is_x: Default::default(),
+        }
+    }
+}
+
+impl<Rounds: Unsigned + Default> ChaChaAny<U24, Rounds, X> {
+    fn new(key: &GenericArray<u8, U32>, nonce: &GenericArray<u8, U24>) -> Self {
         ChaChaAny {
             state: Buffer {
                 state: init_chacha_x(key, nonce, Rounds::U32),
@@ -483,11 +479,7 @@ impl<Rounds: Unsigned + Default> NewStreamCipher for ChaChaAny<U24, Rounds, X> {
     }
 }
 
-impl<NonceSize: Unsigned, Rounds, IsX> SyncStreamCipherSeek for ChaChaAny<NonceSize, Rounds, IsX> {
-    #[inline]
-    fn current_pos(&self) -> u64 {
-        unimplemented!()
-    }
+impl<NonceSize: Unsigned, Rounds, IsX> ChaChaAny<NonceSize, Rounds, IsX> {
     #[inline(always)]
     fn seek(&mut self, ct: u64) {
         if NonceSize::U32 != 12 {
@@ -498,11 +490,67 @@ impl<NonceSize: Unsigned, Rounds, IsX> SyncStreamCipherSeek for ChaChaAny<NonceS
     }
 }
 
-impl<NonceSize, Rounds: Unsigned, IsX> SyncStreamCipher for ChaChaAny<NonceSize, Rounds, IsX> {
+impl<NonceSize, Rounds: Unsigned, IsX> ChaChaAny<NonceSize, Rounds, IsX> {
     #[inline]
-    fn try_apply_keystream(&mut self, data: &mut [u8]) -> Result<(), LoopError> {
+    fn try_apply_keystream(&mut self, data: &mut [u8]) -> Result<(), ()> {
         self.state
             .try_apply_keystream::<WideEnabled>(data, Rounds::U32)
+    }
+    #[inline]
+    fn apply_keystream(&mut self, data: &mut [u8]) {
+        self.try_apply_keystream(data).expect("keystream exhausted")
+    }
+}
+
+#[cfg(feature = "rustcrypto_api")]
+mod rustcrypto_impl {
+    use super::*;
+    use stream_cipher::{LoopError, NewStreamCipher, SyncStreamCipher, SyncStreamCipherSeek};
+
+    impl<NonceSize, Rounds> NewStreamCipher for ChaChaAny<NonceSize, Rounds, O>
+    where
+        NonceSize: Unsigned + ArrayLength<u8> + Default,
+        Rounds: Default,
+    {
+        type KeySize = U32;
+        type NonceSize = NonceSize;
+        #[inline]
+        fn new(
+            key: &GenericArray<u8, Self::KeySize>,
+            nonce: &GenericArray<u8, Self::NonceSize>,
+        ) -> Self {
+            Self::new(key, nonce)
+        }
+    }
+
+    impl<Rounds: Unsigned + Default> NewStreamCipher for ChaChaAny<U24, Rounds, X> {
+        type KeySize = U32;
+        type NonceSize = U24;
+        #[inline]
+        fn new(
+            key: &GenericArray<u8, Self::KeySize>,
+            nonce: &GenericArray<u8, Self::NonceSize>,
+        ) -> Self {
+            Self::new(key, nonce)
+        }
+    }
+
+    impl<NonceSize: Unsigned, Rounds, IsX> SyncStreamCipherSeek for ChaChaAny<NonceSize, Rounds, IsX> {
+        #[inline]
+        fn current_pos(&self) -> u64 {
+            unimplemented!()
+        }
+        #[inline(always)]
+        fn seek(&mut self, ct: u64) {
+            Self::seek(self, ct)
+        }
+    }
+
+    impl<NonceSize, Rounds: Unsigned, IsX> SyncStreamCipher for ChaChaAny<NonceSize, Rounds, IsX> {
+        #[inline]
+        fn try_apply_keystream(&mut self, data: &mut [u8]) -> Result<(), LoopError> {
+            Self::try_apply_keystream(self, data).map_err(|_| LoopError)
+        }
     }
 }
 
