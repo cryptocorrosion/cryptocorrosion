@@ -7,13 +7,7 @@
 use std as core;
 
 extern crate block_buffer;
-extern crate crypto_simd;
 pub extern crate digest;
-#[cfg(feature = "packed_simd")]
-extern crate packed_simd_crate;
-#[cfg(not(any(feature = "simd", feature = "packed_simd")))]
-extern crate ppv_null;
-#[cfg(all(feature = "simd", not(feature = "packed_simd")))]
 #[macro_use]
 pub extern crate simd;
 #[cfg(feature = "std")]
@@ -25,17 +19,14 @@ mod consts;
 use block_buffer::byteorder::{ByteOrder, BE};
 use block_buffer::BlockBuffer;
 use core::mem;
-use crypto_simd::*;
 use digest::generic_array::typenum::{PartialDiv, Unsigned, U2};
 use digest::generic_array::GenericArray;
 pub use digest::Digest;
-#[cfg(feature = "packed_simd")]
-use packed_simd_crate::{u32x4, u64x4};
-#[cfg(not(any(feature = "simd", feature = "packed_simd")))]
-use ppv_null::{u32x4, u64x4};
+use simd::*;
 
-use simd::crypto_simd_new::{RotateEachWord32, RotateEachWord64};
-use simd::{vec128_storage, vec256_storage, Machine, StoreBytes, Words4};
+use simd::{
+    vec128_storage, vec256_storage, Machine, RotateEachWord32, RotateEachWord64, StoreBytes, Words4,
+};
 
 #[inline(always)]
 fn round32<M: Machine>(

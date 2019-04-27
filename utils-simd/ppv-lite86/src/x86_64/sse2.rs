@@ -3,13 +3,10 @@ use core::marker::PhantomData;
 use core::ops::{
     Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not,
 };
-use crate::crypto_simd_new::*;
-use crate::crypto_simd_new_types::*;
-use crate::machine::x86::Machine86;
-use crate::{
-    vec128_storage, vec256_storage, vec512_storage, Machine, NoS3, NoS4, Store, StoreBytes, YesS3,
-    YesS4,
-};
+use crate::soft::{x2, x4};
+use crate::types::*;
+use crate::vec128_storage;
+use crate::x86_64::{Machine86, NoS3, NoS4, YesS3, YesS4};
 
 macro_rules! impl_binop {
     ($vec:ident, $trait:ident, $fn:ident, $impl_fn:ident) => {
@@ -845,416 +842,6 @@ pub struct G0;
 #[derive(Copy, Clone)]
 pub struct G1;
 
-#[derive(Copy, Clone, Default)]
-#[allow(non_camel_case_types)]
-pub struct x2<W, G>([W; 2], PhantomData<G>);
-impl<W, G> x2<W, G> {
-    #[inline(always)]
-    fn new(xs: [W; 2]) -> Self {
-        x2(xs, PhantomData)
-    }
-}
-macro_rules! fwd_binop_x2 {
-    ($trait:ident, $fn:ident) => {
-        impl<W: $trait + Copy, G> $trait for x2<W, G> {
-            type Output = x2<W::Output, G>;
-            #[inline(always)]
-            fn $fn(self, rhs: Self) -> Self::Output {
-                x2::new([self.0[0].$fn(rhs.0[0]), self.0[1].$fn(rhs.0[1])])
-            }
-        }
-    };
-}
-macro_rules! fwd_binop_assign_x2 {
-    ($trait:ident, $fn_assign:ident) => {
-        impl<W: $trait + Copy, G> $trait for x2<W, G> {
-            #[inline(always)]
-            fn $fn_assign(&mut self, rhs: Self) {
-                (self.0[0]).$fn_assign(rhs.0[0]);
-                (self.0[1]).$fn_assign(rhs.0[1]);
-            }
-        }
-    };
-}
-macro_rules! fwd_unop_x2 {
-    ($fn:ident) => {
-        #[inline(always)]
-        fn $fn(self) -> Self {
-            x2::new([self.0[0].$fn(), self.0[1].$fn()])
-        }
-    };
-}
-impl<W, G> RotateEachWord32 for x2<W, G>
-where
-    W: Copy + RotateEachWord32,
-{
-    fwd_unop_x2!(rotate_each_word_right7);
-    fwd_unop_x2!(rotate_each_word_right8);
-    fwd_unop_x2!(rotate_each_word_right11);
-    fwd_unop_x2!(rotate_each_word_right12);
-    fwd_unop_x2!(rotate_each_word_right16);
-    fwd_unop_x2!(rotate_each_word_right20);
-    fwd_unop_x2!(rotate_each_word_right24);
-    fwd_unop_x2!(rotate_each_word_right25);
-}
-impl<W, G> RotateEachWord64 for x2<W, G>
-where
-    W: Copy + RotateEachWord64,
-{
-    fwd_unop_x2!(rotate_each_word_right32);
-}
-impl<W, G> RotateEachWord128 for x2<W, G> where W: RotateEachWord128 {}
-impl<W, G> BitOps0 for x2<W, G>
-where
-    W: BitOps0,
-    G: Copy,
-{
-}
-impl<W, G> BitOps32 for x2<W, G>
-where
-    W: BitOps32 + BitOps0,
-    G: Copy,
-{
-}
-impl<W, G> BitOps64 for x2<W, G>
-where
-    W: BitOps64 + BitOps0,
-    G: Copy,
-{
-}
-impl<W, G> BitOps128 for x2<W, G>
-where
-    W: BitOps128 + BitOps0,
-    G: Copy,
-{
-}
-fwd_binop_x2!(BitAnd, bitand);
-fwd_binop_x2!(BitOr, bitor);
-fwd_binop_x2!(BitXor, bitxor);
-fwd_binop_x2!(AndNot, andnot);
-fwd_binop_assign_x2!(BitAndAssign, bitand_assign);
-fwd_binop_assign_x2!(BitOrAssign, bitor_assign);
-fwd_binop_assign_x2!(BitXorAssign, bitxor_assign);
-impl<W, G> ArithOps for x2<W, G>
-where
-    W: ArithOps,
-    G: Copy,
-{
-}
-fwd_binop_x2!(Add, add);
-fwd_binop_assign_x2!(AddAssign, add_assign);
-impl<W: Not + Copy, G> Not for x2<W, G> {
-    type Output = x2<W::Output, G>;
-    #[inline(always)]
-    fn not(self) -> Self::Output {
-        x2::new([self.0[0].not(), self.0[1].not()])
-    }
-}
-impl<W, G> UnsafeFrom<[W; 2]> for x2<W, G> {
-    #[inline(always)]
-    unsafe fn unsafe_from(xs: [W; 2]) -> Self {
-        x2::new(xs)
-    }
-}
-impl<W: Copy, G> Vec2<W> for x2<W, G> {
-    #[inline(always)]
-    fn extract(self, i: u32) -> W {
-        self.0[i as usize]
-    }
-    #[inline(always)]
-    fn insert(mut self, w: W, i: u32) -> Self {
-        self.0[i as usize] = w;
-        self
-    }
-}
-impl<W: Copy + Store<vec128_storage>, G> Store<vec256_storage> for x2<W, G> {
-    #[inline(always)]
-    unsafe fn unpack(p: vec256_storage) -> Self {
-        x2::new([W::unpack(p.sse2[0]), W::unpack(p.sse2[1])])
-    }
-}
-impl<W, G> From<x2<W, G>> for vec256_storage
-where
-    W: Copy,
-    vec128_storage: From<W>,
-{
-    #[inline(always)]
-    fn from(x: x2<W, G>) -> Self {
-        vec256_storage {
-            sse2: [x.0[0].into(), x.0[1].into()],
-        }
-    }
-}
-impl<W, G> Swap64 for x2<W, G>
-where
-    W: Swap64 + Copy,
-{
-    fwd_unop_x2!(swap1);
-    fwd_unop_x2!(swap2);
-    fwd_unop_x2!(swap4);
-    fwd_unop_x2!(swap8);
-    fwd_unop_x2!(swap16);
-    fwd_unop_x2!(swap32);
-    fwd_unop_x2!(swap64);
-}
-impl<W: Copy, G> MultiLane<[W; 2]> for x2<W, G> {
-    #[inline(always)]
-    fn to_lanes(self) -> [W; 2] {
-        self.0
-    }
-    #[inline(always)]
-    fn from_lanes(lanes: [W; 2]) -> Self {
-        x2::new(lanes)
-    }
-}
-impl<W: BSwap + Copy, G> BSwap for x2<W, G> {
-    #[inline(always)]
-    fn bswap(self) -> Self {
-        x2::new([self.0[0].bswap(), self.0[1].bswap()])
-    }
-}
-impl<W: StoreBytes + BSwap + Copy, G> StoreBytes for x2<W, G> {
-    #[inline(always)]
-    unsafe fn unsafe_read_le(input: &[u8]) -> Self {
-        let input = input.split_at(16);
-        x2::new([W::unsafe_read_le(input.0), W::unsafe_read_le(input.1)])
-    }
-    #[inline(always)]
-    unsafe fn unsafe_read_be(input: &[u8]) -> Self {
-        x2::unsafe_read_le(input).bswap()
-    }
-    #[inline(always)]
-    fn write_le(self, out: &mut [u8]) {
-        let out = out.split_at_mut(16);
-        self.0[0].write_le(out.0);
-        self.0[1].write_le(out.1);
-    }
-    #[inline(always)]
-    fn write_be(self, out: &mut [u8]) {
-        let out = out.split_at_mut(16);
-        self.0[0].write_be(out.0);
-        self.0[1].write_be(out.1);
-    }
-}
-
-#[derive(Copy, Clone, Default)]
-#[allow(non_camel_case_types)]
-pub struct x4<W>([W; 4]);
-macro_rules! fwd_binop_x4 {
-    ($trait:ident, $fn:ident) => {
-        impl<W: $trait + Copy> $trait for x4<W> {
-            type Output = x4<W::Output>;
-            #[inline(always)]
-            fn $fn(self, rhs: Self) -> Self::Output {
-                x4([
-                    self.0[0].$fn(rhs.0[0]),
-                    self.0[1].$fn(rhs.0[1]),
-                    self.0[2].$fn(rhs.0[2]),
-                    self.0[3].$fn(rhs.0[3]),
-                ])
-            }
-        }
-    };
-}
-macro_rules! fwd_binop_assign_x4 {
-    ($trait:ident, $fn_assign:ident) => {
-        impl<W: $trait + Copy> $trait for x4<W> {
-            #[inline(always)]
-            fn $fn_assign(&mut self, rhs: Self) {
-                self.0[0].$fn_assign(rhs.0[0]);
-                self.0[1].$fn_assign(rhs.0[1]);
-                self.0[2].$fn_assign(rhs.0[2]);
-                self.0[3].$fn_assign(rhs.0[3]);
-            }
-        }
-    };
-}
-macro_rules! fwd_unop_x4 {
-    ($fn:ident) => {
-        #[inline(always)]
-        fn $fn(self) -> Self {
-            x4([self.0[0].$fn(), self.0[1].$fn(), self.0[2].$fn(), self.0[3].$fn()])
-        }
-    };
-}
-impl<W> RotateEachWord32 for x4<W>
-where
-    W: Copy + RotateEachWord32,
-{
-    fwd_unop_x4!(rotate_each_word_right7);
-    fwd_unop_x4!(rotate_each_word_right8);
-    fwd_unop_x4!(rotate_each_word_right11);
-    fwd_unop_x4!(rotate_each_word_right12);
-    fwd_unop_x4!(rotate_each_word_right16);
-    fwd_unop_x4!(rotate_each_word_right20);
-    fwd_unop_x4!(rotate_each_word_right24);
-    fwd_unop_x4!(rotate_each_word_right25);
-}
-impl<W> RotateEachWord64 for x4<W>
-where
-    W: Copy + RotateEachWord64,
-{
-    fwd_unop_x4!(rotate_each_word_right32);
-}
-impl<W> RotateEachWord128 for x4<W> where W: RotateEachWord128 {}
-impl<W> BitOps0 for x4<W> where W: BitOps0 {}
-impl<W> BitOps32 for x4<W> where W: BitOps32 + BitOps0 {}
-impl<W> BitOps64 for x4<W> where W: BitOps64 + BitOps0 {}
-impl<W> BitOps128 for x4<W> where W: BitOps128 + BitOps0 {}
-fwd_binop_x4!(BitAnd, bitand);
-fwd_binop_x4!(BitOr, bitor);
-fwd_binop_x4!(BitXor, bitxor);
-fwd_binop_x4!(AndNot, andnot);
-fwd_binop_assign_x4!(BitAndAssign, bitand_assign);
-fwd_binop_assign_x4!(BitOrAssign, bitor_assign);
-fwd_binop_assign_x4!(BitXorAssign, bitxor_assign);
-impl<W> ArithOps for x4<W> where W: ArithOps {}
-fwd_binop_x4!(Add, add);
-fwd_binop_assign_x4!(AddAssign, add_assign);
-impl<W: Not + Copy> Not for x4<W> {
-    type Output = x4<W::Output>;
-    #[inline(always)]
-    fn not(self) -> Self::Output {
-        x4([
-            self.0[0].not(),
-            self.0[1].not(),
-            self.0[2].not(),
-            self.0[3].not(),
-        ])
-    }
-}
-impl<W> UnsafeFrom<[W; 4]> for x4<W> {
-    #[inline(always)]
-    unsafe fn unsafe_from(xs: [W; 4]) -> Self {
-        x4(xs)
-    }
-}
-impl<W: Copy> Vec4<W> for x4<W> {
-    #[inline(always)]
-    fn extract(self, i: u32) -> W {
-        self.0[i as usize]
-    }
-    #[inline(always)]
-    fn insert(mut self, w: W, i: u32) -> Self {
-        self.0[i as usize] = w;
-        self
-    }
-}
-impl<W: Copy + Store<vec128_storage>> Store<vec512_storage> for x4<W> {
-    #[inline(always)]
-    unsafe fn unpack(p: vec512_storage) -> Self {
-        x4([
-            W::unpack(p.sse2[0]),
-            W::unpack(p.sse2[1]),
-            W::unpack(p.sse2[2]),
-            W::unpack(p.sse2[3]),
-        ])
-    }
-}
-impl<W> From<x4<W>> for vec512_storage
-where
-    W: Copy,
-    vec128_storage: From<W>,
-{
-    #[inline(always)]
-    fn from(x: x4<W>) -> Self {
-        vec512_storage {
-            sse2: [x.0[0].into(), x.0[1].into(), x.0[2].into(), x.0[3].into()],
-        }
-    }
-}
-impl<W> Swap64 for x4<W>
-where
-    W: Swap64 + Copy,
-{
-    fwd_unop_x4!(swap1);
-    fwd_unop_x4!(swap2);
-    fwd_unop_x4!(swap4);
-    fwd_unop_x4!(swap8);
-    fwd_unop_x4!(swap16);
-    fwd_unop_x4!(swap32);
-    fwd_unop_x4!(swap64);
-}
-impl<W: Copy> MultiLane<[W; 4]> for x4<W> {
-    #[inline(always)]
-    fn to_lanes(self) -> [W; 4] {
-        self.0
-    }
-    #[inline(always)]
-    fn from_lanes(lanes: [W; 4]) -> Self {
-        x4(lanes)
-    }
-}
-impl<W: BSwap + Copy> BSwap for x4<W> {
-    #[inline(always)]
-    fn bswap(self) -> Self {
-        x4([
-            self.0[0].bswap(),
-            self.0[1].bswap(),
-            self.0[2].bswap(),
-            self.0[3].bswap(),
-        ])
-    }
-}
-impl<W: StoreBytes + BSwap + Copy> StoreBytes for x4<W> {
-    #[inline(always)]
-    unsafe fn unsafe_read_le(input: &[u8]) -> Self {
-        x4([
-            W::unsafe_read_le(&input[0..16]),
-            W::unsafe_read_le(&input[16..32]),
-            W::unsafe_read_le(&input[32..48]),
-            W::unsafe_read_le(&input[48..64]),
-        ])
-    }
-    #[inline(always)]
-    unsafe fn unsafe_read_be(input: &[u8]) -> Self {
-        x4::unsafe_read_le(input).bswap()
-    }
-    #[inline(always)]
-    fn write_le(self, out: &mut [u8]) {
-        self.0[0].write_le(&mut out[0..16]);
-        self.0[1].write_le(&mut out[16..32]);
-        self.0[2].write_le(&mut out[32..48]);
-        self.0[3].write_le(&mut out[48..64]);
-    }
-    #[inline(always)]
-    fn write_be(self, out: &mut [u8]) {
-        self.0[0].write_be(&mut out[0..16]);
-        self.0[1].write_be(&mut out[16..32]);
-        self.0[2].write_be(&mut out[32..48]);
-        self.0[3].write_be(&mut out[48..64]);
-    }
-}
-impl<W: Copy + LaneWords4> LaneWords4 for x4<W> {
-    #[inline(always)]
-    fn shuffle_lane_words2301(self) -> Self {
-        x4([
-            self.0[0].shuffle_lane_words2301(),
-            self.0[1].shuffle_lane_words2301(),
-            self.0[2].shuffle_lane_words2301(),
-            self.0[3].shuffle_lane_words2301(),
-        ])
-    }
-    #[inline(always)]
-    fn shuffle_lane_words1230(self) -> Self {
-        x4([
-            self.0[0].shuffle_lane_words1230(),
-            self.0[1].shuffle_lane_words1230(),
-            self.0[2].shuffle_lane_words1230(),
-            self.0[3].shuffle_lane_words1230(),
-        ])
-    }
-    #[inline(always)]
-    fn shuffle_lane_words3012(self) -> Self {
-        x4([
-            self.0[0].shuffle_lane_words3012(),
-            self.0[1].shuffle_lane_words3012(),
-            self.0[2].shuffle_lane_words3012(),
-            self.0[3].shuffle_lane_words3012(),
-        ])
-    }
-}
-
 #[allow(non_camel_case_types)]
 pub type u32x4x2_sse2<S3, S4, NI> = x2<u32x4_sse2<S3, S4, NI>, G0>;
 #[allow(non_camel_case_types)]
@@ -1365,7 +952,7 @@ macro_rules! impl_into_x {
         impl<S3: Copy, S4: Copy, NI: Copy> From<x4<$from<S3, S4, NI>>> for x4<$to<S3, S4, NI>> {
             #[inline(always)]
             fn from(x: x4<$from<S3, S4, NI>>) -> Self {
-                x4([
+                x4::new([
                     $to::from(x.0[0]),
                     $to::from(x.0[1]),
                     $to::from(x.0[2]),
@@ -1449,8 +1036,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::crypto_simd_new_types::*;
-    use crate::machine::x86::{SSE2, SSE41, SSSE3};
+    use crate::x86_64::{SSE2, SSE41, SSSE3};
     use crate::Machine;
 
     #[test]
@@ -1642,7 +1228,7 @@ mod test {
     fn test_vec4_u32x4_s2() {
         let xs = [1, 2, 3, 4];
         let s2 = unsafe { SSE2::instance() };
-        let mut x_s2: <SSE2 as Machine>::u32x4 = s2.vec(xs);
+        let x_s2: <SSE2 as Machine>::u32x4 = s2.vec(xs);
         assert_eq!(x_s2.extract(0), 1);
         assert_eq!(x_s2.extract(1), 2);
         assert_eq!(x_s2.extract(2), 3);
@@ -1658,7 +1244,7 @@ mod test {
     fn test_vec4_u32x4_s4() {
         let xs = [1, 2, 3, 4];
         let s4 = unsafe { SSE41::instance() };
-        let mut x_s4: <SSE41 as Machine>::u32x4 = s4.vec(xs);
+        let x_s4: <SSE41 as Machine>::u32x4 = s4.vec(xs);
         assert_eq!(x_s4.extract(0), 1);
         assert_eq!(x_s4.extract(1), 2);
         assert_eq!(x_s4.extract(2), 3);
@@ -1674,7 +1260,7 @@ mod test {
     fn test_vec2_u64x2_s2() {
         let xs = [0x1, 0x2];
         let s2 = unsafe { SSE2::instance() };
-        let mut x_s2: <SSE2 as Machine>::u64x2 = s2.vec(xs);
+        let x_s2: <SSE2 as Machine>::u64x2 = s2.vec(xs);
         assert_eq!(x_s2.extract(0), 1);
         assert_eq!(x_s2.extract(1), 2);
         assert_eq!(x_s2.insert(0xf, 0), s2.vec([0xf, 2]));
@@ -1686,7 +1272,7 @@ mod test {
     fn test_vec4_u64x2_s4() {
         let xs = [0x1, 0x2];
         let s4 = unsafe { SSE41::instance() };
-        let mut x_s4: <SSE41 as Machine>::u64x2 = s4.vec(xs);
+        let x_s4: <SSE41 as Machine>::u64x2 = s4.vec(xs);
         assert_eq!(x_s4.extract(0), 1);
         assert_eq!(x_s4.extract(1), 2);
         assert_eq!(x_s4.insert(0xf, 0), s4.vec([0xf, 2]));

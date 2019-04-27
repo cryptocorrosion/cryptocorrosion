@@ -4,18 +4,12 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-extern crate crypto_simd;
 pub extern crate digest;
 #[macro_use]
 extern crate hex_literal;
-#[cfg(all(feature = "std", feature = "simd"))]
+#[cfg(all(feature = "std"))]
 #[macro_use]
 extern crate lazy_static;
-#[cfg(feature = "packed_simd")]
-extern crate packed_simd_crate;
-#[cfg(not(any(feature = "simd", feature = "packed_simd")))]
-extern crate ppv_null;
-#[cfg(all(feature = "simd", not(feature = "packed_simd")))]
 #[macro_use]
 pub extern crate simd;
 
@@ -24,11 +18,11 @@ mod consts;
 
 pub use digest::Digest;
 
-use crate::compressor::Compressor;
 use block_buffer::byteorder::{BigEndian, ByteOrder};
 use block_buffer::generic_array::GenericArray as BBGenericArray;
 use block_buffer::BlockBuffer;
 use core::fmt::{Debug, Formatter, Result};
+use crate::compressor::Compressor;
 use digest::generic_array::typenum::{Unsigned, U28, U32, U48, U64};
 use digest::generic_array::GenericArray as DGenericArray;
 
