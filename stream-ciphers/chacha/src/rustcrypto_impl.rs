@@ -1,10 +1,8 @@
-use crate::crypto::generic_array::typenum::{Unsigned, U10, U12, U24, U32, U4, U6, U8};
-use crate::crypto::generic_array::{ArrayLength, GenericArray};
-use crate::crypto::{
-    refill_narrow, refill_narrow_rounds, refill_wide, ChaCha, Machine, BLOCK, BLOCK64, BUFSZ,
-};
 use byteorder::{ByteOrder, LE};
 use core::cmp;
+use crate::crypto::generic_array::typenum::{Unsigned, U10, U12, U24, U32, U4, U6, U8};
+use crate::crypto::generic_array::{ArrayLength, GenericArray};
+use crate::crypto::{ChaCha, Machine, BLOCK, BLOCK64, BUFSZ};
 pub use stream_cipher;
 use stream_cipher::{LoopError, NewStreamCipher, SyncStreamCipher, SyncStreamCipherSeek};
 
@@ -42,7 +40,7 @@ impl Buffer {
         // We can do this before the overflow check because this is not an effect of the current
         // operation.
         if self.have < 0 {
-            refill_narrow(&mut self.state, drounds, &mut self.out);
+            self.state.refill(drounds, &mut self.out);
             self.have += BLOCK as i8;
             // checked in seek()
             self.len -= 1;
@@ -71,7 +69,7 @@ impl Buffer {
             let (d0, d1) = data.split_at_mut(data.len() & !(BUFSZ - 1));
             for dd in d0.chunks_exact_mut(BUFSZ) {
                 let mut buf = [0; BUFSZ];
-                refill_wide(&mut self.state, drounds, &mut buf);
+                self.state.refill4(drounds, &mut buf);
                 for (data_b, key_b) in dd.iter_mut().zip(buf.iter()) {
                     *data_b ^= *key_b;
                 }
@@ -80,7 +78,7 @@ impl Buffer {
         }
         // Handle the tail a block at a time so we'll have storage for any leftovers.
         for dd in data.chunks_mut(BLOCK) {
-            refill_narrow(&mut self.state, drounds, &mut self.out);
+            self.state.refill(drounds, &mut self.out);
             for (data_b, key_b) in dd.iter_mut().zip(self.out.iter()) {
                 *data_b ^= *key_b;
             }
@@ -274,7 +272,7 @@ dispatch_light128!(m, Mach, {
             c: key1.into(),
             d: nonce0.into(),
         };
-        let x = refill_narrow_rounds(&mut state, rounds);
+        let x = state.refill_rounds(rounds);
         let ctr_nonce1 = [
             0,
             0,

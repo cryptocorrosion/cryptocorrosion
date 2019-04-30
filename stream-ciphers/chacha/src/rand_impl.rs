@@ -2,7 +2,7 @@ use core::fmt;
 use core::marker::PhantomData;
 use crate::crypto::generic_array::typenum::{Unsigned, U10, U64};
 use crate::crypto::generic_array::GenericArray;
-use crate::crypto::{get_stream_param, init_chacha, refill_wide, set_stream_param, ChaCha};
+use crate::crypto::ChaCha;
 use rand_core::block::{BlockRng, BlockRngCore};
 use rand_core::{CryptoRng, Error, RngCore, SeedableRng};
 
@@ -26,7 +26,7 @@ impl<Rounds: Unsigned> BlockRngCore for ChaChaCore<Rounds> {
     #[inline]
     fn generate(&mut self, r: &mut Self::Results) {
         // Fill slice of words by writing to equivalent slice of bytes, then fixing endianness.
-        refill_wide(&mut self.state, Rounds::U32, unsafe {
+        self.state.refill4(Rounds::U32, unsafe {
             core::mem::transmute::<&mut GenericArray<u32, U64>, &mut [u8; 256]>(&mut *r)
         });
         for x in r {
@@ -88,7 +88,7 @@ impl<Rounds: Unsigned> SeedableRng for ChaChaRng<Rounds> {
     #[inline]
     fn from_seed(seed: Self::Seed) -> Self {
         let core = ChaChaCore {
-            state: init_chacha(GenericArray::from_slice(&seed), &[0u8; 8]),
+            state: ChaCha::new(GenericArray::from_slice(&seed), &[0u8; 8]),
             _rounds: PhantomData,
         };
         Self {
@@ -130,7 +130,7 @@ impl<Rounds: Unsigned> ChaChaRng<Rounds> {
     /// byte-offset.
     #[inline]
     pub fn get_word_pos(&self) -> u128 {
-        let mut block = u128::from(get_stream_param(&self.rng.core.state, STREAM_PARAM_BLOCK));
+        let mut block = u128::from(self.rng.core.state.get_stream_param(STREAM_PARAM_BLOCK));
         // counter is incremented *after* filling buffer
         block -= 4;
         (block << 4) + self.rng.index() as u128
@@ -144,7 +144,10 @@ impl<Rounds: Unsigned> ChaChaRng<Rounds> {
     #[inline]
     pub fn set_word_pos(&mut self, word_offset: u128) {
         let block = (word_offset >> 4) as u64;
-        set_stream_param(&mut self.rng.core.state, STREAM_PARAM_BLOCK, block);
+        self.rng
+            .core
+            .state
+            .set_stream_param(STREAM_PARAM_BLOCK, block);
         self.rng.generate_and_set((word_offset & 15) as usize);
     }
 
@@ -161,7 +164,10 @@ impl<Rounds: Unsigned> ChaChaRng<Rounds> {
     /// indirectly via `set_word_pos`), but this is not directly supported.
     #[inline]
     pub fn set_stream(&mut self, stream: u64) {
-        set_stream_param(&mut self.rng.core.state, STREAM_PARAM_NONCE, stream);
+        self.rng
+            .core
+            .state
+            .set_stream_param(STREAM_PARAM_NONCE, stream);
         if self.rng.index() != 64 {
             let wp = self.get_word_pos();
             self.set_word_pos(wp);

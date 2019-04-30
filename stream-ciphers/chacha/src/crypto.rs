@@ -11,30 +11,30 @@ use self::generic_array::GenericArray;
 pub use simd::Machine;
 use simd::{vec128_storage, ArithOps, BitOps32, LaneWords4, MultiLane, StoreBytes, Vec4};
 
-pub const BLOCK: usize = 64;
-pub const BLOCK64: u64 = BLOCK as u64;
+pub(crate) const BLOCK: usize = 64;
+pub(crate) const BLOCK64: u64 = BLOCK as u64;
 const LOG2_BUFBLOCKS: u64 = 2;
 const BUFBLOCKS: u64 = 1 << LOG2_BUFBLOCKS;
-pub const BUFSZ64: u64 = BLOCK64 * BUFBLOCKS;
-pub const BUFSZ: usize = BUFSZ64 as usize;
+pub(crate) const BUFSZ64: u64 = BLOCK64 * BUFBLOCKS;
+pub(crate) const BUFSZ: usize = BUFSZ64 as usize;
 
 #[derive(Clone)]
 pub struct ChaCha {
-    pub b: vec128_storage,
-    pub c: vec128_storage,
-    pub d: vec128_storage,
+    pub(crate) b: vec128_storage,
+    pub(crate) c: vec128_storage,
+    pub(crate) d: vec128_storage,
 }
 
 #[derive(Clone)]
 pub struct State<V> {
-    pub a: V,
-    pub b: V,
-    pub c: V,
-    pub d: V,
+    pub(crate) a: V,
+    pub(crate) b: V,
+    pub(crate) c: V,
+    pub(crate) d: V,
 }
 
 #[inline(always)]
-pub fn round<V: ArithOps + BitOps32>(mut x: State<V>) -> State<V> {
+pub(crate) fn round<V: ArithOps + BitOps32>(mut x: State<V>) -> State<V> {
     x.a += x.b;
     x.d = (x.d ^ x.a).rotate_each_word_right16();
     x.c += x.d;
@@ -47,14 +47,14 @@ pub fn round<V: ArithOps + BitOps32>(mut x: State<V>) -> State<V> {
 }
 
 #[inline(always)]
-pub fn diagonalize<V: LaneWords4>(mut x: State<V>) -> State<V> {
+pub(crate) fn diagonalize<V: LaneWords4>(mut x: State<V>) -> State<V> {
     x.b = x.b.shuffle_lane_words3012();
     x.c = x.c.shuffle_lane_words2301();
     x.d = x.d.shuffle_lane_words1230();
     x
 }
 #[inline(always)]
-pub fn undiagonalize<V: LaneWords4>(mut x: State<V>) -> State<V> {
+pub(crate) fn undiagonalize<V: LaneWords4>(mut x: State<V>) -> State<V> {
     x.b = x.b.shuffle_lane_words1230();
     x.c = x.c.shuffle_lane_words2301();
     x.d = x.d.shuffle_lane_words3012();
@@ -63,14 +63,19 @@ pub fn undiagonalize<V: LaneWords4>(mut x: State<V>) -> State<V> {
 
 impl ChaCha {
     #[inline(always)]
-    pub fn pos64<M: Machine>(&self, m: M) -> u64 {
+    pub fn new(key: &GenericArray<u8, U32>, nonce: &[u8]) -> Self {
+        init_chacha(key, nonce)
+    }
+
+    #[inline(always)]
+    fn pos64<M: Machine>(&self, m: M) -> u64 {
         let d: M::u32x4 = m.unpack(self.d);
         ((d.extract(1) as u64) << 32) | d.extract(0) as u64
     }
 
     /// Set 64-bit block count, affecting next refill.
     #[inline(always)]
-    pub fn seek64<M: Machine>(&mut self, m: M, blockct: u64) {
+    pub(crate) fn seek64<M: Machine>(&mut self, m: M, blockct: u64) {
         let d: M::u32x4 = m.unpack(self.d);
         self.d = d
             .insert((blockct >> 32) as u32, 1)
@@ -80,7 +85,7 @@ impl ChaCha {
 
     /// Set 32-bit block count, affecting next refill.
     #[inline(always)]
-    pub fn seek32<M: Machine>(&mut self, m: M, blockct: u32) {
+    pub(crate) fn seek32<M: Machine>(&mut self, m: M, blockct: u32) {
         let d: M::u32x4 = m.unpack(self.d);
         self.d = d.insert(blockct, 0).into();
     }
@@ -103,6 +108,33 @@ impl ChaCha {
         pos += 1;
         let d1 = d0.insert((pos >> 32) as u32, 1).insert(pos as u32, 0);
         self.d = d1.into();
+    }
+
+    /// Produce 4 blocks of output, advancing the state
+    #[inline(always)]
+    pub fn refill4(&mut self, drounds: u32, out: &mut [u8; BUFSZ]) {
+        refill_wide(self, drounds, out)
+    }
+
+    /// Produce a block of output, advancing the state
+    #[inline(always)]
+    pub fn refill(&mut self, drounds: u32, out: &mut [u8; BLOCK]) {
+        refill_narrow(self, drounds, out)
+    }
+
+    #[inline(always)]
+    pub(crate) fn refill_rounds(&mut self, drounds: u32) -> State<vec128_storage> {
+        refill_narrow_rounds(self, drounds)
+    }
+
+    #[inline(always)]
+    pub fn set_stream_param(&mut self, param: u32, value: u64) {
+        set_stream_param(self, param, value)
+    }
+
+    #[inline(always)]
+    pub fn get_stream_param(&self, param: u32) -> u64 {
+        get_stream_param(self, param)
     }
 }
 
@@ -166,14 +198,14 @@ fn refill_wide_impl<Mach: Machine>(
 }
 
 dispatch!(m, Mach, {
-    [pub] fn refill_wide(state: &mut ChaCha, drounds: u32, out: &mut [u8; BUFSZ]) {
+    fn refill_wide(state: &mut ChaCha, drounds: u32, out: &mut [u8; BUFSZ]) {
         refill_wide_impl(m, state, drounds, out);
     }
 });
 
 /// Refill the buffer from a single-block round, updating the block count.
 dispatch_light128!(m, Mach, {
-    [pub] fn refill_narrow(state: &mut ChaCha, drounds: u32, out: &mut [u8; BLOCK]) {
+    fn refill_narrow(state: &mut ChaCha, drounds: u32, out: &mut [u8; BLOCK]) {
         let x = refill_narrow_rounds(state, drounds);
         let x = State {
             a: m.unpack(x.a),
@@ -189,7 +221,7 @@ dispatch_light128!(m, Mach, {
 /// Single-block, rounds-only; shared by try_apply_keystream for tails shorter than BUFSZ
 /// and XChaCha's setup step.
 dispatch!(m, Mach, {
-    [pub] fn refill_narrow_rounds(state: &mut ChaCha, drounds: u32) -> State<vec128_storage> {
+    fn refill_narrow_rounds(state: &mut ChaCha, drounds: u32) -> State<vec128_storage> {
         let k: Mach::u32x4 = m.vec([0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574]);
         let mut x = State {
             a: k,
@@ -211,7 +243,7 @@ dispatch!(m, Mach, {
 });
 
 dispatch_light128!(m, Mach, {
-    [pub] fn set_stream_param(state: &mut ChaCha, param: u32, value: u64) {
+    fn set_stream_param(state: &mut ChaCha, param: u32, value: u64) {
         let d: Mach::u32x4 = m.unpack(state.d);
         state.d = d
             .insert((value >> 32) as u32, (param << 1) | 1)
@@ -221,14 +253,14 @@ dispatch_light128!(m, Mach, {
 });
 
 dispatch_light128!(m, Mach, {
-    [pub] fn get_stream_param(state: &ChaCha, param: u32) -> u64 {
+    fn get_stream_param(state: &ChaCha, param: u32) -> u64 {
         let d: Mach::u32x4 = m.unpack(state.d);
         ((d.extract((param << 1) | 1) as u64) << 32) | d.extract(param << 1) as u64
     }
 });
 
 dispatch_light128!(m, Mach, {
-    [pub] fn init_chacha(key: &GenericArray<u8, U32>, nonce: &[u8]) -> ChaCha {
+    fn init_chacha(key: &GenericArray<u8, U32>, nonce: &[u8]) -> ChaCha {
         let ctr_nonce = [
             0,
             if nonce.len() == 12 {
