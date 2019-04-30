@@ -1,18 +1,9 @@
 #![allow(non_upper_case_globals)]
 
 use core::ptr;
-#[cfg(feature = "packed_simd")]
-use crypto_simd::*;
 use digest::generic_array::typenum::U64;
 use digest::generic_array::GenericArray;
-#[cfg(feature = "packed_simd")]
-use packed_simd_crate::{u128x1, u128x2};
-#[cfg(not(any(feature = "packed_simd", feature = "simd")))]
-use ppv_null::{u128x1, u128x2};
-#[cfg(all(feature = "simd", not(feature = "packed_simd")))]
-use simd::crypto_simd_new::AndNot;
-#[cfg(all(feature = "simd", not(feature = "packed_simd")))]
-use simd::{vec128_storage, Machine, Swap64, VZip, Vec2};
+use simd::{vec128_storage, AndNot, Machine, Swap64, VZip, Vec2};
 
 const E8_BITSLICE_ROUNDCONSTANT: [[u8; 32]; 42] = [
     hex!("72d5dea2df15f8677b84150ab723155781abd6904d5a87f64e9f4fc5c3d12b40"),
