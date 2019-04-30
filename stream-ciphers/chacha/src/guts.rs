@@ -63,8 +63,8 @@ pub(crate) fn undiagonalize<V: LaneWords4>(mut x: State<V>) -> State<V> {
 
 impl ChaCha {
     #[inline(always)]
-    pub fn new(key: &GenericArray<u8, U32>, nonce: &[u8]) -> Self {
-        init_chacha(key, nonce)
+    pub fn new(key: &[u8; 32], nonce: &[u8]) -> Self {
+        init_chacha(GenericArray::from_slice(key), nonce)
     }
 
     #[inline(always)]

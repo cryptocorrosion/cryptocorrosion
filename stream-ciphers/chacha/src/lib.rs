@@ -41,12 +41,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate simd;
 
-mod crypto;
-
-#[cfg(feature = "provide_rand_backend")]
-mod rand_impl;
-#[cfg(feature = "provide_rand_backend")]
-pub use self::rand_impl::{ChaCha20Rng, ChaChaCore, ChaChaRng};
+pub mod guts;
 
 #[cfg(feature = "rustcrypto_api")]
 mod rustcrypto_impl;
