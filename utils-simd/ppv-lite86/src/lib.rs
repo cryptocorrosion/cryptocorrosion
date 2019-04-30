@@ -1,4 +1,4 @@
-//#![no_std]
+#![no_std]
 
 // Design:
 // - safety: safe creation of any machine type is done only by instance methods of a

@@ -13,3 +13,7 @@ categories = ["cryptography", "no-std"]
 
 [badges]
 travis-ci = { repository = "cryptocorrosion/cryptocorrosion" }
+
+[features]
+default = ["std"]
+std = []
