@@ -1,8 +1,6 @@
 #[cfg(feature = "rustcrypto_api")]
 pub use stream_cipher::generic_array;
 
-use byteorder::{ByteOrder, LE};
-
 pub use simd::Machine;
 use simd::{vec128_storage, ArithOps, BitOps32, LaneWords4, MultiLane, StoreBytes, Vec4};
 
@@ -254,17 +252,22 @@ dispatch_light128!(m, Mach, {
     }
 });
 
+fn read_u32le(xs: &[u8]) -> u32 {
+    assert_eq!(xs.len(), 4);
+    u32::from(xs[0]) | (u32::from(xs[1]) << 8) | (u32::from(xs[2]) << 16) | (u32::from(xs[3]) << 24)
+}
+
 dispatch_light128!(m, Mach, {
     fn init_chacha(key: &[u8; 32], nonce: &[u8]) -> ChaCha {
         let ctr_nonce = [
             0,
             if nonce.len() == 12 {
-                LE::read_u32(&nonce[0..4])
+                read_u32le(&nonce[0..4])
             } else {
                 0
             },
-            LE::read_u32(&nonce[nonce.len() - 8..nonce.len() - 4]),
-            LE::read_u32(&nonce[nonce.len() - 4..]),
+            read_u32le(&nonce[nonce.len() - 8..nonce.len() - 4]),
+            read_u32le(&nonce[nonce.len() - 4..]),
         ];
         let key0: Mach::u32x4 = m.read_le(&key[..16]);
         let key1: Mach::u32x4 = m.read_le(&key[16..]);
@@ -287,12 +290,7 @@ dispatch_light128!(m, Mach, {
             d: nonce0.into(),
         };
         let x = refill_narrow_rounds(&mut state, rounds);
-        let ctr_nonce1 = [
-            0,
-            0,
-            LE::read_u32(&nonce[16..20]),
-            LE::read_u32(&nonce[20..24]),
-        ];
+        let ctr_nonce1 = [0, 0, read_u32le(&nonce[16..20]), read_u32le(&nonce[20..24])];
         state.b = x.a;
         state.c = x.d;
         state.d = ctr_nonce1.into();
