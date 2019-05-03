@@ -3,7 +3,6 @@
 use crate::types::*;
 use core::arch::x86_64::{__m128i, __m256i};
 
-mod avx2;
 mod sse2;
 
 #[derive(Copy, Clone)]
@@ -34,7 +33,7 @@ pub struct NoNI;
 use core::marker::PhantomData;
 
 #[derive(Copy, Clone)]
-struct SseMachine<S3, S4, NI>(PhantomData<(S3, S4, NI)>);
+pub struct SseMachine<S3, S4, NI>(PhantomData<(S3, S4, NI)>);
 impl<S3: Copy, S4: Copy, NI: Copy> Machine for SseMachine<S3, S4, NI>
 where
     sse2::u128x1_sse2<S3, S4, NI>: Swap64,
@@ -68,18 +67,13 @@ where
 }
 
 #[derive(Copy, Clone)]
-struct Avx2Machine<NI>(PhantomData<NI>);
+pub struct Avx2Machine<NI>(PhantomData<NI>);
 impl<NI: Copy> Machine for Avx2Machine<NI>
 where
     sse2::u128x1_sse2<YesS3, YesS4, NI>: BSwap + Swap64,
     sse2::u64x2_sse2<YesS3, YesS4, NI>: BSwap + RotateEachWord32 + MultiLane<[u64; 2]> + Vec2<u64>,
     sse2::u32x4_sse2<YesS3, YesS4, NI>: BSwap + RotateEachWord32 + MultiLane<[u32; 4]> + Vec4<u32>,
     sse2::u64x4_sse2<YesS3, YesS4, NI>: BSwap + Words4,
-    sse2::u128x2_sse2<YesS3, YesS4, NI>: Into<sse2::u64x2x2_sse2<YesS3, YesS4, NI>>,
-    sse2::u128x2_sse2<YesS3, YesS4, NI>: Into<sse2::u64x4_sse2<YesS3, YesS4, NI>>,
-    sse2::u128x2_sse2<YesS3, YesS4, NI>: Into<sse2::u32x4x2_sse2<YesS3, YesS4, NI>>,
-    sse2::u128x4_sse2<YesS3, YesS4, NI>: Into<sse2::u64x2x4_sse2<YesS3, YesS4, NI>>,
-    sse2::u128x4_sse2<YesS3, YesS4, NI>: Into<sse2::u32x4x4_sse2<YesS3, YesS4, NI>>,
 {
     type u32x4 = sse2::u32x4_sse2<YesS3, YesS4, NI>;
     type u64x2 = sse2::u64x2_sse2<YesS3, YesS4, NI>;
@@ -90,7 +84,7 @@ where
     type u64x4 = sse2::u64x4_sse2<YesS3, YesS4, NI>;
     type u128x2 = sse2::u128x2_sse2<YesS3, YesS4, NI>;
 
-    type u32x4x4 = sse2::u32x4x4_sse2<YesS3, YesS4, NI>;
+    type u32x4x4 = sse2::avx2::u32x4x4_avx2<NI>;
     type u64x2x4 = sse2::u64x2x4_sse2<YesS3, YesS4, NI>;
     type u128x4 = sse2::u128x4_sse2<YesS3, YesS4, NI>;
 
