@@ -39,7 +39,7 @@ extern crate hex_literal;
 extern crate lazy_static;
 
 #[macro_use]
-extern crate simd;
+extern crate ppv_lite86;
 
 pub mod guts;
 

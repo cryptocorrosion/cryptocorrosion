@@ -1,8 +1,8 @@
 #[cfg(feature = "rustcrypto_api")]
 pub use stream_cipher::generic_array;
 
-pub use simd::Machine;
-use simd::{vec128_storage, ArithOps, BitOps32, LaneWords4, MultiLane, StoreBytes, Vec4};
+pub use ppv_lite86::Machine;
+use ppv_lite86::{vec128_storage, ArithOps, BitOps32, LaneWords4, MultiLane, StoreBytes, Vec4};
 
 pub(crate) const BLOCK: usize = 64;
 pub(crate) const BLOCK64: u64 = BLOCK as u64;
