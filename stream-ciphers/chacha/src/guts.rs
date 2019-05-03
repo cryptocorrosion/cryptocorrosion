@@ -1,12 +1,7 @@
-#[cfg(not(feature = "rustcrypto_api"))]
-pub use generic_array;
 #[cfg(feature = "rustcrypto_api")]
 pub use stream_cipher::generic_array;
 
 use byteorder::{ByteOrder, LE};
-
-use self::generic_array::typenum::{U24, U32};
-use self::generic_array::GenericArray;
 
 pub use simd::Machine;
 use simd::{vec128_storage, ArithOps, BitOps32, LaneWords4, MultiLane, StoreBytes, Vec4};
@@ -64,7 +59,7 @@ pub(crate) fn undiagonalize<V: LaneWords4>(mut x: State<V>) -> State<V> {
 impl ChaCha {
     #[inline(always)]
     pub fn new(key: &[u8; 32], nonce: &[u8]) -> Self {
-        init_chacha(GenericArray::from_slice(key), nonce)
+        init_chacha(key, nonce)
     }
 
     #[inline(always)]
@@ -260,7 +255,7 @@ dispatch_light128!(m, Mach, {
 });
 
 dispatch_light128!(m, Mach, {
-    fn init_chacha(key: &GenericArray<u8, U32>, nonce: &[u8]) -> ChaCha {
+    fn init_chacha(key: &[u8; 32], nonce: &[u8]) -> ChaCha {
         let ctr_nonce = [
             0,
             if nonce.len() == 12 {
@@ -282,11 +277,7 @@ dispatch_light128!(m, Mach, {
 });
 
 dispatch_light128!(m, Mach, {
-    fn init_chacha_x(
-        key: &GenericArray<u8, U32>,
-        nonce: &GenericArray<u8, U24>,
-        rounds: u32,
-    ) -> ChaCha {
+    fn init_chacha_x(key: &[u8; 32], nonce: &[u8; 24], rounds: u32) -> ChaCha {
         let key0: Mach::u32x4 = m.read_le(&key[..16]);
         let key1: Mach::u32x4 = m.read_le(&key[16..]);
         let nonce0: Mach::u32x4 = m.read_le(&nonce[..16]);
