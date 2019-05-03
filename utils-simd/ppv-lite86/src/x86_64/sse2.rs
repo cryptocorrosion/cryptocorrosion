@@ -1,12 +1,14 @@
+use crate::soft::{x2, x4};
+use crate::types::*;
+use crate::vec128_storage;
+use crate::x86_64::Avx2Machine;
+use crate::x86_64::SseMachine as Machine86;
+use crate::x86_64::{NoS3, NoS4, YesS3, YesS4};
 use core::arch::x86_64::*;
 use core::marker::PhantomData;
 use core::ops::{
     Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not,
 };
-use crate::soft::{x2, x4};
-use crate::types::*;
-use crate::vec128_storage;
-use crate::x86_64::{Machine86, NoS3, NoS4, YesS3, YesS4};
 
 macro_rules! impl_binop {
     ($vec:ident, $trait:ident, $fn:ident, $impl_fn:ident) => {
@@ -137,7 +139,8 @@ macro_rules! impl_bitops32 {
     ($vec:ident) => {
         impl<S3: Copy, S4: Copy, NI: Copy> BitOps32 for $vec<S3, S4, NI> where
             $vec<S3, S4, NI>: RotateEachWord32
-        {}
+        {
+        }
     };
 }
 
@@ -146,7 +149,8 @@ macro_rules! impl_bitops64 {
         impl_bitops32!($vec);
         impl<S3: Copy, S4: Copy, NI: Copy> BitOps64 for $vec<S3, S4, NI> where
             $vec<S3, S4, NI>: RotateEachWord64 + RotateEachWord32
-        {}
+        {
+        }
     };
 }
 
@@ -155,7 +159,8 @@ macro_rules! impl_bitops128 {
         impl_bitops64!($vec);
         impl<S3: Copy, S4: Copy, NI: Copy> BitOps128 for $vec<S3, S4, NI> where
             $vec<S3, S4, NI>: RotateEachWord128
-        {}
+        {
+        }
     };
 }
 
@@ -449,10 +454,12 @@ impl_bitops128!(u128x1_sse2);
 
 impl<S3: Copy, S4: Copy, NI: Copy> ArithOps for u32x4_sse2<S3, S4, NI> where
     u32x4_sse2<S3, S4, NI>: BSwap
-{}
+{
+}
 impl<S3: Copy, S4: Copy, NI: Copy> ArithOps for u64x2_sse2<S3, S4, NI> where
     u64x2_sse2<S3, S4, NI>: BSwap
-{}
+{
+}
 impl_binop!(u32x4_sse2, Add, add, _mm_add_epi32);
 impl_binop!(u64x2_sse2, Add, add, _mm_add_epi64);
 impl_binop_assign!(u32x4_sse2, AddAssign, add_assign, add);
@@ -462,20 +469,45 @@ impl<S3: Copy, S4: Copy, NI: Copy> u32x4<Machine86<S3, S4, NI>> for u32x4_sse2<S
 where
     u32x4_sse2<S3, S4, NI>: RotateEachWord32 + BSwap + MultiLane<[u32; 4]> + Vec4<u32>,
     Machine86<S3, S4, NI>: Machine,
-{}
+{
+}
 impl<S3: Copy, S4: Copy, NI: Copy> u64x2<Machine86<S3, S4, NI>> for u64x2_sse2<S3, S4, NI>
 where
     u64x2_sse2<S3, S4, NI>:
         RotateEachWord64 + RotateEachWord32 + BSwap + MultiLane<[u64; 2]> + Vec2<u64>,
     Machine86<S3, S4, NI>: Machine,
-{}
+{
+}
 impl<S3: Copy, S4: Copy, NI: Copy> u128x1<Machine86<S3, S4, NI>> for u128x1_sse2<S3, S4, NI>
 where
     u128x1_sse2<S3, S4, NI>: Swap64 + RotateEachWord64 + RotateEachWord32 + BSwap,
     Machine86<S3, S4, NI>: Machine,
     u128x1_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u32x4>,
     u128x1_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u64x2>,
-{}
+{
+}
+
+impl<NI: Copy> u32x4<Avx2Machine<NI>> for u32x4_sse2<YesS3, YesS4, NI>
+where
+    u32x4_sse2<YesS3, YesS4, NI>: RotateEachWord32 + BSwap + MultiLane<[u32; 4]> + Vec4<u32>,
+    Machine86<YesS3, YesS4, NI>: Machine,
+{
+}
+impl<NI: Copy> u64x2<Avx2Machine<NI>> for u64x2_sse2<YesS3, YesS4, NI>
+where
+    u64x2_sse2<YesS3, YesS4, NI>:
+        RotateEachWord64 + RotateEachWord32 + BSwap + MultiLane<[u64; 2]> + Vec2<u64>,
+    Machine86<YesS3, YesS4, NI>: Machine,
+{
+}
+impl<NI: Copy> u128x1<Avx2Machine<NI>> for u128x1_sse2<YesS3, YesS4, NI>
+where
+    u128x1_sse2<YesS3, YesS4, NI>: Swap64 + RotateEachWord64 + RotateEachWord32 + BSwap,
+    Machine86<YesS3, YesS4, NI>: Machine,
+    u128x1_sse2<YesS3, YesS4, NI>: Into<<Machine86<YesS3, YesS4, NI> as Machine>::u32x4>,
+    u128x1_sse2<YesS3, YesS4, NI>: Into<<Machine86<YesS3, YesS4, NI> as Machine>::u64x2>,
+{
+}
 
 impl<S3, S4, NI> UnsafeFrom<[u32; 4]> for u32x4_sse2<S3, S4, NI> {
     #[inline(always)]
@@ -864,20 +896,23 @@ where
     Machine86<S3, S4, NI>: Machine,
     u32x4x2_sse2<S3, S4, NI>: MultiLane<[<Machine86<S3, S4, NI> as Machine>::u32x4; 2]>,
     u32x4x2_sse2<S3, S4, NI>: Vec2<<Machine86<S3, S4, NI> as Machine>::u32x4>,
-{}
+{
+}
 impl<S3: Copy, S4: Copy, NI: Copy> u64x2x2<Machine86<S3, S4, NI>> for u64x2x2_sse2<S3, S4, NI>
 where
     u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap,
     Machine86<S3, S4, NI>: Machine,
     u64x2x2_sse2<S3, S4, NI>: MultiLane<[<Machine86<S3, S4, NI> as Machine>::u64x2; 2]>,
     u64x2x2_sse2<S3, S4, NI>: Vec2<<Machine86<S3, S4, NI> as Machine>::u64x2>,
-{}
+{
+}
 impl<S3: Copy, S4: Copy, NI: Copy> u64x4<Machine86<S3, S4, NI>> for u64x4_sse2<S3, S4, NI>
 where
     u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap,
     Machine86<S3, S4, NI>: Machine,
     u64x4_sse2<S3, S4, NI>: MultiLane<[u64; 4]> + Vec4<u64> + Words4,
-{}
+{
+}
 impl<S3: Copy, S4: Copy, NI: Copy> u128x2<Machine86<S3, S4, NI>> for u128x2_sse2<S3, S4, NI>
 where
     u128x1_sse2<S3, S4, NI>: Swap64 + BSwap,
@@ -887,7 +922,44 @@ where
     u128x2_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u32x4x2>,
     u128x2_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u64x2x2>,
     u128x2_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u64x4>,
-{}
+{
+}
+
+impl<NI: Copy> u32x4x2<Avx2Machine<NI>> for u32x4x2_sse2<YesS3, YesS4, NI>
+where
+    u32x4_sse2<YesS3, YesS4, NI>: RotateEachWord32 + BSwap,
+    Avx2Machine<NI>: Machine,
+    u32x4x2_sse2<YesS3, YesS4, NI>: MultiLane<[<Avx2Machine<NI> as Machine>::u32x4; 2]>,
+    u32x4x2_sse2<YesS3, YesS4, NI>: Vec2<<Avx2Machine<NI> as Machine>::u32x4>,
+{
+}
+impl<NI: Copy> u64x2x2<Avx2Machine<NI>> for u64x2x2_sse2<YesS3, YesS4, NI>
+where
+    u64x2_sse2<YesS3, YesS4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap,
+    Avx2Machine<NI>: Machine,
+    u64x2x2_sse2<YesS3, YesS4, NI>: MultiLane<[<Avx2Machine<NI> as Machine>::u64x2; 2]>,
+    u64x2x2_sse2<YesS3, YesS4, NI>: Vec2<<Avx2Machine<NI> as Machine>::u64x2>,
+{
+}
+impl<NI: Copy> u64x4<Avx2Machine<NI>> for u64x4_sse2<YesS3, YesS4, NI>
+where
+    u64x2_sse2<YesS3, YesS4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap,
+    Avx2Machine<NI>: Machine,
+    u64x4_sse2<YesS3, YesS4, NI>: MultiLane<[u64; 4]> + Vec4<u64> + Words4,
+{
+}
+impl<NI: Copy> u128x2<Avx2Machine<NI>> for u128x2_sse2<YesS3, YesS4, NI>
+where
+    u128x1_sse2<YesS3, YesS4, NI>: Swap64 + BSwap,
+    Avx2Machine<NI>: Machine,
+    u128x2_sse2<YesS3, YesS4, NI>: MultiLane<[<Avx2Machine<NI> as Machine>::u128x1; 2]>,
+    u128x2_sse2<YesS3, YesS4, NI>: Vec2<<Avx2Machine<NI> as Machine>::u128x1>,
+    u128x2_sse2<YesS3, YesS4, NI>: Into<<Avx2Machine<NI> as Machine>::u32x4x2>,
+    u128x2_sse2<YesS3, YesS4, NI>: Into<<Avx2Machine<NI> as Machine>::u64x2x2>,
+    u128x2_sse2<YesS3, YesS4, NI>: Into<<Avx2Machine<NI> as Machine>::u64x4>,
+{
+}
+
 impl<S3, S4, NI> Vec4<u64> for u64x4_sse2<S3, S4, NI>
 where
     u64x2_sse2<S3, S4, NI>: Copy + Vec2<u64>,
@@ -921,14 +993,16 @@ where
     Machine86<S3, S4, NI>: Machine,
     u32x4x4_sse2<S3, S4, NI>: MultiLane<[<Machine86<S3, S4, NI> as Machine>::u32x4; 4]>,
     u32x4x4_sse2<S3, S4, NI>: Vec4<<Machine86<S3, S4, NI> as Machine>::u32x4>,
-{}
+{
+}
 impl<S3: Copy, S4: Copy, NI: Copy> u64x2x4<Machine86<S3, S4, NI>> for u64x2x4_sse2<S3, S4, NI>
 where
     u64x2_sse2<S3, S4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap,
     Machine86<S3, S4, NI>: Machine,
     u64x2x4_sse2<S3, S4, NI>: MultiLane<[<Machine86<S3, S4, NI> as Machine>::u64x2; 4]>,
     u64x2x4_sse2<S3, S4, NI>: Vec4<<Machine86<S3, S4, NI> as Machine>::u64x2>,
-{}
+{
+}
 impl<S3: Copy, S4: Copy, NI: Copy> u128x4<Machine86<S3, S4, NI>> for u128x4_sse2<S3, S4, NI>
 where
     u128x1_sse2<S3, S4, NI>: Swap64 + BSwap,
@@ -937,7 +1011,35 @@ where
     u128x4_sse2<S3, S4, NI>: Vec4<<Machine86<S3, S4, NI> as Machine>::u128x1>,
     u128x4_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u32x4x4>,
     u128x4_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u64x2x4>,
-{}
+{
+}
+
+impl<NI: Copy> u32x4x4<Avx2Machine<NI>> for u32x4x4_sse2<YesS3, YesS4, NI>
+where
+    u32x4_sse2<YesS3, YesS4, NI>: RotateEachWord32 + BSwap,
+    Avx2Machine<NI>: Machine,
+    u32x4x4_sse2<YesS3, YesS4, NI>: MultiLane<[<Avx2Machine<NI> as Machine>::u32x4; 4]>,
+    u32x4x4_sse2<YesS3, YesS4, NI>: Vec4<<Avx2Machine<NI> as Machine>::u32x4>,
+{
+}
+impl<NI: Copy> u64x2x4<Avx2Machine<NI>> for u64x2x4_sse2<YesS3, YesS4, NI>
+where
+    u64x2_sse2<YesS3, YesS4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap,
+    Avx2Machine<NI>: Machine,
+    u64x2x4_sse2<YesS3, YesS4, NI>: MultiLane<[<Avx2Machine<NI> as Machine>::u64x2; 4]>,
+    u64x2x4_sse2<YesS3, YesS4, NI>: Vec4<<Avx2Machine<NI> as Machine>::u64x2>,
+{
+}
+impl<NI: Copy> u128x4<Avx2Machine<NI>> for u128x4_sse2<YesS3, YesS4, NI>
+where
+    u128x1_sse2<YesS3, YesS4, NI>: Swap64 + BSwap,
+    Avx2Machine<NI>: Machine,
+    u128x4_sse2<YesS3, YesS4, NI>: MultiLane<[<Avx2Machine<NI> as Machine>::u128x1; 4]>,
+    u128x4_sse2<YesS3, YesS4, NI>: Vec4<<Avx2Machine<NI> as Machine>::u128x1>,
+    u128x4_sse2<YesS3, YesS4, NI>: Into<<Avx2Machine<NI> as Machine>::u32x4x4>,
+    u128x4_sse2<YesS3, YesS4, NI>: Into<<Avx2Machine<NI> as Machine>::u64x2x4>,
+{
+}
 
 macro_rules! impl_into_x {
     ($from:ident, $to:ident) => {

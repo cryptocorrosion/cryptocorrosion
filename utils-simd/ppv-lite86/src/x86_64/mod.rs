@@ -1,9 +1,9 @@
 // crate minimums: sse2, x86_64
 
-use core::arch::x86_64::{__m128i, __m256i};
 use crate::types::*;
+use core::arch::x86_64::{__m128i, __m256i};
 
-mod avx;
+mod avx2;
 mod sse2;
 
 #[derive(Copy, Clone)]
@@ -34,8 +34,8 @@ pub struct NoNI;
 use core::marker::PhantomData;
 
 #[derive(Copy, Clone)]
-pub struct Machine86<S3, S4, NI>(PhantomData<(S3, S4, NI)>);
-impl<S3: Copy, S4: Copy, NI: Copy> Machine for Machine86<S3, S4, NI>
+struct SseMachine<S3, S4, NI>(PhantomData<(S3, S4, NI)>);
+impl<S3: Copy, S4: Copy, NI: Copy> Machine for SseMachine<S3, S4, NI>
 where
     sse2::u128x1_sse2<S3, S4, NI>: Swap64,
     sse2::u64x2_sse2<S3, S4, NI>: BSwap + RotateEachWord32 + MultiLane<[u64; 2]> + Vec2<u64>,
@@ -63,17 +63,50 @@ where
 
     #[inline(always)]
     unsafe fn instance() -> Self {
-        Machine86(PhantomData)
+        SseMachine(PhantomData)
     }
 }
 
-pub type SSE2 = Machine86<NoS3, NoS4, NoNI>;
-pub type SSSE3 = Machine86<YesS3, NoS4, NoNI>;
-pub type SSE41 = Machine86<YesS3, YesS4, NoNI>;
+#[derive(Copy, Clone)]
+struct Avx2Machine<NI>(PhantomData<NI>);
+impl<NI: Copy> Machine for Avx2Machine<NI>
+where
+    sse2::u128x1_sse2<YesS3, YesS4, NI>: BSwap + Swap64,
+    sse2::u64x2_sse2<YesS3, YesS4, NI>: BSwap + RotateEachWord32 + MultiLane<[u64; 2]> + Vec2<u64>,
+    sse2::u32x4_sse2<YesS3, YesS4, NI>: BSwap + RotateEachWord32 + MultiLane<[u32; 4]> + Vec4<u32>,
+    sse2::u64x4_sse2<YesS3, YesS4, NI>: BSwap + Words4,
+    sse2::u128x2_sse2<YesS3, YesS4, NI>: Into<sse2::u64x2x2_sse2<YesS3, YesS4, NI>>,
+    sse2::u128x2_sse2<YesS3, YesS4, NI>: Into<sse2::u64x4_sse2<YesS3, YesS4, NI>>,
+    sse2::u128x2_sse2<YesS3, YesS4, NI>: Into<sse2::u32x4x2_sse2<YesS3, YesS4, NI>>,
+    sse2::u128x4_sse2<YesS3, YesS4, NI>: Into<sse2::u64x2x4_sse2<YesS3, YesS4, NI>>,
+    sse2::u128x4_sse2<YesS3, YesS4, NI>: Into<sse2::u32x4x4_sse2<YesS3, YesS4, NI>>,
+{
+    type u32x4 = sse2::u32x4_sse2<YesS3, YesS4, NI>;
+    type u64x2 = sse2::u64x2_sse2<YesS3, YesS4, NI>;
+    type u128x1 = sse2::u128x1_sse2<YesS3, YesS4, NI>;
+
+    type u32x4x2 = sse2::u32x4x2_sse2<YesS3, YesS4, NI>;
+    type u64x2x2 = sse2::u64x2x2_sse2<YesS3, YesS4, NI>;
+    type u64x4 = sse2::u64x4_sse2<YesS3, YesS4, NI>;
+    type u128x2 = sse2::u128x2_sse2<YesS3, YesS4, NI>;
+
+    type u32x4x4 = sse2::u32x4x4_sse2<YesS3, YesS4, NI>;
+    type u64x2x4 = sse2::u64x2x4_sse2<YesS3, YesS4, NI>;
+    type u128x4 = sse2::u128x4_sse2<YesS3, YesS4, NI>;
+
+    #[inline(always)]
+    unsafe fn instance() -> Self {
+        Avx2Machine(PhantomData)
+    }
+}
+
+pub type SSE2 = SseMachine<NoS3, NoS4, NoNI>;
+pub type SSSE3 = SseMachine<YesS3, NoS4, NoNI>;
+pub type SSE41 = SseMachine<YesS3, YesS4, NoNI>;
 /// AVX but not AVX2: only 128-bit integer operations, but use VEX versions of everything
 /// to avoid expensive SSE/VEX conflicts.
-pub type AVX = Machine86<YesS3, YesS4, NoNI>;
-pub type AVX2 = Machine86<YesS3, YesS4, NoNI>;
+pub type AVX = SseMachine<YesS3, YesS4, NoNI>;
+pub type AVX2 = Avx2Machine<NoNI>;
 
 /// Generic wrapper for unparameterized storage of any of the possible impls.
 /// Converting into and out of this type should be essentially free, although it may be more
@@ -209,7 +242,9 @@ macro_rules! dispatch {
                 if is_x86_feature_detected!("avx2") {
                     #[target_feature(enable = "avx2")]
                     unsafe fn impl_avx2($($arg: $argty),*) -> $ret {
-                        fn_impl($crate::x86_64::AVX2::instance(), $($arg),*)
+                        let ret = fn_impl($crate::x86_64::AVX2::instance(), $($arg),*);
+                        _mm256_zeroupper();
+                        ret
                     }
                     impl_avx2
                 } else if is_x86_feature_detected!("avx") {
@@ -217,7 +252,9 @@ macro_rules! dispatch {
                     #[target_feature(enable = "sse4.1")]
                     #[target_feature(enable = "ssse3")]
                     unsafe fn impl_avx($($arg: $argty),*) -> $ret {
-                        fn_impl($crate::x86_64::AVX::instance(), $($arg),*)
+                        let ret = fn_impl($crate::x86_64::AVX::instance(), $($arg),*);
+                        _mm256_zeroupper();
+                        ret
                     }
                     impl_avx
                 } else if is_x86_feature_detected!("sse4.1") {
