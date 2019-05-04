@@ -41,16 +41,18 @@ pub(crate) fn round<V: ArithOps + BitOps32>(mut x: State<V>) -> State<V> {
 
 #[inline(always)]
 pub(crate) fn diagonalize<V: LaneWords4>(mut x: State<V>) -> State<V> {
-    x.b = x.b.shuffle_lane_words3012();
-    x.c = x.c.shuffle_lane_words2301();
-    x.d = x.d.shuffle_lane_words1230();
+    // Since b has the critical data dependency, avoid rotating b to hide latency.
+    x.c = x.c.shuffle_lane_words3012();
+    x.d = x.d.shuffle_lane_words2301();
+    x.a = x.a.shuffle_lane_words1230();
     x
 }
+
 #[inline(always)]
 pub(crate) fn undiagonalize<V: LaneWords4>(mut x: State<V>) -> State<V> {
-    x.b = x.b.shuffle_lane_words1230();
-    x.c = x.c.shuffle_lane_words2301();
-    x.d = x.d.shuffle_lane_words3012();
+    x.c = x.c.shuffle_lane_words1230();
+    x.d = x.d.shuffle_lane_words2301();
+    x.a = x.a.shuffle_lane_words3012();
     x
 }
 
