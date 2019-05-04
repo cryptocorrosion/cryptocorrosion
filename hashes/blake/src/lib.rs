@@ -71,14 +71,16 @@ fn round64<M: Machine>(
     (a, b, c, d)
 }
 
+
 #[inline(always)]
 fn diagonalize<X4: Words4>((a, b, c, d): (X4, X4, X4, X4)) -> (X4, X4, X4, X4) {
-    (a, b.shuffle3012(), c.shuffle2301(), d.shuffle1230())
+    // Since b has the critical data dependency, avoid rotating b to hide latency.
+    (a.shuffle1230(), b, c.shuffle3012(), d.shuffle2301())
 }
 
 #[inline(always)]
 fn undiagonalize<X4: Words4>((a, b, c, d): (X4, X4, X4, X4)) -> (X4, X4, X4, X4) {
-    (a, b.shuffle1230(), c.shuffle2301(), d.shuffle3012())
+    (a.shuffle3012(), b, c.shuffle1230(), d.shuffle2301())
 }
 
 macro_rules! define_compressor {
@@ -114,8 +116,8 @@ macro_rules! define_compressor {
                     let m1 = mach.vec([m1!(0), m1!(2), m1!(4), m1!(6)]);
                     xs = $round::<M>(xs, m0, m1);
                     // diagonal step
-                    let m0 = mach.vec([m0!(8), m0!(10), m0!(12), m0!(14)]);
-                    let m1 = mach.vec([m1!(8), m1!(10), m1!(12), m1!(14)]);
+                    let m0 = mach.vec([m0!(14), m0!(8), m0!(10), m0!(12)]);
+                    let m1 = mach.vec([m1!(14), m1!(8), m1!(10), m1!(12)]);
                     xs = undiagonalize($round::<M>(diagonalize(xs), m0, m1));
                 }
                 let h: (M::$X4, M::$X4) = (mach.unpack(state.h[0]), mach.unpack(state.h[1]));
