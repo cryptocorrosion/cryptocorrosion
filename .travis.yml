@@ -78,6 +78,34 @@ matrix:
     - env: TARGET=x86_64-unknown-linux-gnu
       rust: 1.31.1
 
+    - env: DESCRIPTION="WASM via emscripten, stdweb and wasm-bindgen"
+      rust: nightly
+      install:
+        - rustup target add wasm32-unknown-unknown
+        - rustup target add wasm32-unknown-emscripten
+        - nvm install 9
+        - ./ci/install_cargo_web.sh
+        - cargo web prepare-emscripten
+        - cargo web -V
+        - cargo list | grep install-update || cargo install -f cargo-update
+        - cargo install-update -i cargo-update wasm-bindgen-cli wasm-pack
+      addons:
+        chrome: stable
+      script:
+        # Testing wasm32-unknown-emscripten fails because of rust-lang/rust#49877
+        # However, we can still build and link all tests to make sure that works.
+        # This is actually useful as it finds stuff such as rust-random/rand#669
+        - EMCC_CFLAGS="-s ERROR_ON_UNDEFINED_SYMBOLS=0" cargo web test --target wasm32-unknown-emscripten --no-run -p c2-chacha
+        #- cargo web test --target wasm32-unknown-emscripten -p c2-chacha
+        #- cargo web test --nodejs --target wasm32-unknown-emscripten -p c2-chacha
+        #- cargo build --target wasm32-unknown-unknown # without any features -p c2-chacha
+        - cargo build --target wasm32-unknown-unknown --features=wasm-bindgen -p c2-chacha
+        - cargo web test --target wasm32-unknown-unknown --features=stdweb -p c2-chacha
+        - cargo build --manifest-path tests/wasm_bindgen/Cargo.toml --target wasm32-unknown-unknown -p c2-chacha
+        - wasm-bindgen --nodejs target/wasm32-unknown-unknown/debug/rand_wasm_bindgen_test.wasm --out-dir tests/wasm_bindgen/js -p c2-chacha
+        - node tests/wasm_bindgen/js/index.js -p c2-chacha
+        - wasm-pack test --node tests/wasm_bindgen -p c2-chacha
+
 before_install:
   - set -e
   - rustup self update
