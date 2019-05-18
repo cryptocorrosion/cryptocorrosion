@@ -36,29 +36,19 @@ use core::marker::PhantomData;
 pub struct SseMachine<S3, S4, NI>(PhantomData<(S3, S4, NI)>);
 impl<S3: Copy, S4: Copy, NI: Copy> Machine for SseMachine<S3, S4, NI>
 where
-    sse2::u128x1_sse2<S3, S4, NI>: Swap64,
     sse2::u64x2_sse2<S3, S4, NI>: BSwap + RotateEachWord32 + MultiLane<[u64; 2]> + Vec2<u64>,
     sse2::u32x4_sse2<S3, S4, NI>: BSwap + RotateEachWord32 + MultiLane<[u32; 4]> + Vec4<u32>,
     sse2::u64x4_sse2<S3, S4, NI>: BSwap + Words4,
-    sse2::u128x1_sse2<S3, S4, NI>: BSwap,
-    sse2::u128x2_sse2<S3, S4, NI>: Into<sse2::u64x2x2_sse2<S3, S4, NI>>,
-    sse2::u128x2_sse2<S3, S4, NI>: Into<sse2::u64x4_sse2<S3, S4, NI>>,
-    sse2::u128x2_sse2<S3, S4, NI>: Into<sse2::u32x4x2_sse2<S3, S4, NI>>,
-    sse2::u128x4_sse2<S3, S4, NI>: Into<sse2::u64x2x4_sse2<S3, S4, NI>>,
-    sse2::u128x4_sse2<S3, S4, NI>: Into<sse2::u32x4x4_sse2<S3, S4, NI>>,
 {
     type u32x4 = sse2::u32x4_sse2<S3, S4, NI>;
     type u64x2 = sse2::u64x2_sse2<S3, S4, NI>;
-    type u128x1 = sse2::u128x1_sse2<S3, S4, NI>;
 
     type u32x4x2 = sse2::u32x4x2_sse2<S3, S4, NI>;
     type u64x2x2 = sse2::u64x2x2_sse2<S3, S4, NI>;
     type u64x4 = sse2::u64x4_sse2<S3, S4, NI>;
-    type u128x2 = sse2::u128x2_sse2<S3, S4, NI>;
 
     type u32x4x4 = sse2::u32x4x4_sse2<S3, S4, NI>;
     type u64x2x4 = sse2::u64x2x4_sse2<S3, S4, NI>;
-    type u128x4 = sse2::u128x4_sse2<S3, S4, NI>;
 
     #[inline(always)]
     unsafe fn instance() -> Self {
@@ -70,23 +60,19 @@ where
 pub struct Avx2Machine<NI>(PhantomData<NI>);
 impl<NI: Copy> Machine for Avx2Machine<NI>
 where
-    sse2::u128x1_sse2<YesS3, YesS4, NI>: BSwap + Swap64,
     sse2::u64x2_sse2<YesS3, YesS4, NI>: BSwap + RotateEachWord32 + MultiLane<[u64; 2]> + Vec2<u64>,
     sse2::u32x4_sse2<YesS3, YesS4, NI>: BSwap + RotateEachWord32 + MultiLane<[u32; 4]> + Vec4<u32>,
     sse2::u64x4_sse2<YesS3, YesS4, NI>: BSwap + Words4,
 {
     type u32x4 = sse2::u32x4_sse2<YesS3, YesS4, NI>;
     type u64x2 = sse2::u64x2_sse2<YesS3, YesS4, NI>;
-    type u128x1 = sse2::u128x1_sse2<YesS3, YesS4, NI>;
 
     type u32x4x2 = sse2::u32x4x2_sse2<YesS3, YesS4, NI>;
     type u64x2x2 = sse2::u64x2x2_sse2<YesS3, YesS4, NI>;
     type u64x4 = sse2::u64x4_sse2<YesS3, YesS4, NI>;
-    type u128x2 = sse2::u128x2_sse2<YesS3, YesS4, NI>;
 
     type u32x4x4 = sse2::avx2::u32x4x4_avx2<NI>;
     type u64x2x4 = sse2::u64x2x4_sse2<YesS3, YesS4, NI>;
-    type u128x4 = sse2::u128x4_sse2<YesS3, YesS4, NI>;
 
     #[inline(always)]
     unsafe fn instance() -> Self {
@@ -110,7 +96,6 @@ pub type AVX2 = Avx2Machine<NoNI>;
 pub union vec128_storage {
     u32x4: [u32; 4],
     u64x2: [u64; 2],
-    u128x1: [u128; 1],
     sse2: __m128i,
 }
 impl Store<vec128_storage> for vec128_storage {
@@ -134,7 +119,7 @@ impl Into<vec128_storage> for [u32; 4] {
 impl Default for vec128_storage {
     #[inline(always)]
     fn default() -> Self {
-        vec128_storage { u128x1: [0] }
+        vec128_storage { u64x2: [0; 2] }
     }
 }
 
@@ -143,7 +128,6 @@ impl Default for vec128_storage {
 pub union vec256_storage {
     u32x8: [u32; 8],
     u64x4: [u64; 4],
-    u128x2: [u128; 2],
     sse2: [vec128_storage; 2],
     avx: __m256i,
 }
@@ -156,7 +140,7 @@ impl Into<vec256_storage> for [u64; 4] {
 impl Default for vec256_storage {
     #[inline(always)]
     fn default() -> Self {
-        vec256_storage { u128x2: [0, 0] }
+        vec256_storage { u64x4: [0; 4] }
     }
 }
 impl vec256_storage {
@@ -173,16 +157,13 @@ impl vec256_storage {
 pub union vec512_storage {
     u32x16: [u32; 16],
     u64x8: [u64; 8],
-    u128x4: [u128; 4],
     sse2: [vec128_storage; 4],
     avx: [vec256_storage; 2],
 }
 impl Default for vec512_storage {
     #[inline(always)]
     fn default() -> Self {
-        vec512_storage {
-            u128x4: [0, 0, 0, 0],
-        }
+        vec512_storage { u64x8: [0; 8] }
     }
 }
 impl vec512_storage {
@@ -206,13 +187,10 @@ macro_rules! impl_into {
 }
 impl_into!(vec128_storage, [u32; 4], u32x4);
 impl_into!(vec128_storage, [u64; 2], u64x2);
-impl_into!(vec128_storage, [u128; 1], u128x1);
 impl_into!(vec256_storage, [u32; 8], u32x8);
 impl_into!(vec256_storage, [u64; 4], u64x4);
-impl_into!(vec256_storage, [u128; 2], u128x2);
 impl_into!(vec512_storage, [u32; 16], u32x16);
 impl_into!(vec512_storage, [u64; 8], u64x8);
-impl_into!(vec512_storage, [u128; 4], u128x4);
 
 /// Generate the full set of optimized implementations to take advantage of the most important
 /// hardware feature sets.

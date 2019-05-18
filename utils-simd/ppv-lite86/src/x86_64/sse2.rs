@@ -307,26 +307,9 @@ macro_rules! rotr_128 {
     }
     };
 }
-// TODO: completely unoptimized
-impl<S3: Copy, S4: Copy, NI: Copy> RotateEachWord32 for u128x1_sse2<S3, S4, NI> {
-    rotr_128!(rotate_each_word_right7, 7);
-    rotr_128!(rotate_each_word_right8, 8);
-    rotr_128!(rotate_each_word_right11, 11);
-    rotr_128!(rotate_each_word_right12, 12);
-    rotr_128!(rotate_each_word_right16, 16);
-    rotr_128!(rotate_each_word_right20, 20);
-    rotr_128!(rotate_each_word_right24, 24);
-    rotr_128!(rotate_each_word_right25, 25);
-}
-// TODO: completely unoptimized
-impl<S3: Copy, S4: Copy, NI: Copy> RotateEachWord64 for u128x1_sse2<S3, S4, NI> {
-    rotr_128!(rotate_each_word_right32, 32);
-}
-impl<S3: Copy, S4: Copy, NI: Copy> RotateEachWord128 for u128x1_sse2<S3, S4, NI> {}
 
 def_vec!(u32x4_sse2, u32);
 def_vec!(u64x2_sse2, u64);
-def_vec!(u128x1_sse2, u128);
 
 impl<S3, NI> MultiLane<[u32; 4]> for u32x4_sse2<S3, YesS4, NI> {
     #[inline(always)]
@@ -404,16 +387,6 @@ impl<S3, NI> MultiLane<[u64; 2]> for u64x2_sse2<S3, NoS4, NI> {
         }
     }
 }
-impl<S3, S4, NI> MultiLane<[u128; 1]> for u128x1_sse2<S3, S4, NI> {
-    #[inline(always)]
-    fn to_lanes(self) -> [u128; 1] {
-        unimplemented!()
-    }
-    #[inline(always)]
-    fn from_lanes(xs: [u128; 1]) -> Self {
-        unimplemented!()
-    }
-}
 
 impl<S3, S4, NI> MultiLane<[u64; 4]> for u64x4_sse2<S3, S4, NI>
 where
@@ -445,12 +418,8 @@ macro_rules! impl_into {
     };
 }
 
-impl_into!(u128x1_sse2, u32x4_sse2);
-impl_into!(u128x1_sse2, u64x2_sse2);
-
 impl_bitops32!(u32x4_sse2);
 impl_bitops64!(u64x2_sse2);
-impl_bitops128!(u128x1_sse2);
 
 impl<S3: Copy, S4: Copy, NI: Copy> ArithOps for u32x4_sse2<S3, S4, NI> where
     u32x4_sse2<S3, S4, NI>: BSwap
@@ -478,14 +447,6 @@ where
     Machine86<S3, S4, NI>: Machine,
 {
 }
-impl<S3: Copy, S4: Copy, NI: Copy> u128x1<Machine86<S3, S4, NI>> for u128x1_sse2<S3, S4, NI>
-where
-    u128x1_sse2<S3, S4, NI>: Swap64 + RotateEachWord64 + RotateEachWord32 + BSwap,
-    Machine86<S3, S4, NI>: Machine,
-    u128x1_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u32x4>,
-    u128x1_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u64x2>,
-{
-}
 
 impl<NI: Copy> u32x4<Avx2Machine<NI>> for u32x4_sse2<YesS3, YesS4, NI>
 where
@@ -498,14 +459,6 @@ where
     u64x2_sse2<YesS3, YesS4, NI>:
         RotateEachWord64 + RotateEachWord32 + BSwap + MultiLane<[u64; 2]> + Vec2<u64>,
     Machine86<YesS3, YesS4, NI>: Machine,
-{
-}
-impl<NI: Copy> u128x1<Avx2Machine<NI>> for u128x1_sse2<YesS3, YesS4, NI>
-where
-    u128x1_sse2<YesS3, YesS4, NI>: Swap64 + RotateEachWord64 + RotateEachWord32 + BSwap,
-    Machine86<YesS3, YesS4, NI>: Machine,
-    u128x1_sse2<YesS3, YesS4, NI>: Into<<Machine86<YesS3, YesS4, NI> as Machine>::u32x4>,
-    u128x1_sse2<YesS3, YesS4, NI>: Into<<Machine86<YesS3, YesS4, NI> as Machine>::u64x2>,
 {
 }
 
@@ -768,105 +721,9 @@ impl<S4, NI> BSwap for u64x2_sse2<NoS3, S4, NI> {
     }
 }
 
-impl<S4, NI> BSwap for u128x1_sse2<YesS3, S4, NI> {
-    #[inline(always)]
-    fn bswap(self) -> Self {
-        Self::new(unsafe {
-            let k = _mm_set_epi64x(0x0f0e_0d0c_0b0a_0908, 0x0706_0504_0302_0100);
-            _mm_shuffle_epi8(self.x, k)
-        })
-    }
-}
-impl<S4, NI> BSwap for u128x1_sse2<NoS3, S4, NI> {
-    #[inline(always)]
-    fn bswap(self) -> Self {
-        Self::new(unsafe { unimplemented!() })
-    }
-}
-
-macro_rules! swapi {
-    ($x:expr, $i:expr, $k:expr) => {
-        unsafe {
-            const K: u8 = $k;
-            let k = _mm_set1_epi8(K as i8);
-            u128x1_sse2::new(_mm_or_si128(
-                _mm_srli_epi16(_mm_and_si128($x.x, k), $i),
-                _mm_and_si128(_mm_slli_epi16($x.x, $i), k),
-            ))
-        }
-    };
-}
 #[inline(always)]
 fn swap16_s2(x: __m128i) -> __m128i {
     unsafe { _mm_shufflehi_epi16(_mm_shufflelo_epi16(x, 0b1011_0001), 0b1011_0001) }
-}
-impl<S4, NI> Swap64 for u128x1_sse2<YesS3, S4, NI> {
-    #[inline(always)]
-    fn swap1(self) -> Self {
-        swapi!(self, 1, 0xaa)
-    }
-    #[inline(always)]
-    fn swap2(self) -> Self {
-        swapi!(self, 2, 0xcc)
-    }
-    #[inline(always)]
-    fn swap4(self) -> Self {
-        swapi!(self, 4, 0xf0)
-    }
-    #[inline(always)]
-    fn swap8(self) -> Self {
-        u128x1_sse2::new(unsafe {
-            let k = _mm_set_epi64x(0x0e0f_0c0d_0a0b_0809, 0x0607_0405_0203_0001);
-            _mm_shuffle_epi8(self.x, k)
-        })
-    }
-    #[inline(always)]
-    fn swap16(self) -> Self {
-        u128x1_sse2::new(unsafe {
-            let k = _mm_set_epi64x(0x0d0c_0f0e_0908_0b0a, 0x0504_0706_0100_0302);
-            _mm_shuffle_epi8(self.x, k)
-        })
-    }
-    #[inline(always)]
-    fn swap32(self) -> Self {
-        u128x1_sse2::new(unsafe { _mm_shuffle_epi32(self.x, 0b1011_0001) })
-    }
-    #[inline(always)]
-    fn swap64(self) -> Self {
-        u128x1_sse2::new(unsafe { _mm_shuffle_epi32(self.x, 0b0100_1110) })
-    }
-}
-impl<S4, NI> Swap64 for u128x1_sse2<NoS3, S4, NI> {
-    #[inline(always)]
-    fn swap1(self) -> Self {
-        swapi!(self, 1, 0xaa)
-    }
-    #[inline(always)]
-    fn swap2(self) -> Self {
-        swapi!(self, 2, 0xcc)
-    }
-    #[inline(always)]
-    fn swap4(self) -> Self {
-        swapi!(self, 4, 0xf0)
-    }
-    #[inline(always)]
-    fn swap8(self) -> Self {
-        u128x1_sse2::new(unsafe {
-            _mm_or_si128(_mm_slli_epi16(self.x, 8), _mm_srli_epi16(self.x, 8))
-        })
-    }
-    #[inline(always)]
-    fn swap16(self) -> Self {
-        u128x1_sse2::new(swap16_s2(self.x))
-    }
-    #[inline(always)]
-    fn swap32(self) -> Self {
-        u128x1_sse2::new(unsafe { _mm_shuffle_epi32(self.x, 0b1011_0001) })
-    }
-    #[inline(always)]
-    fn swap64(self) -> Self {
-        u128x1_sse2::new(unsafe { _mm_shuffle_epi32(self.x, 0b0100_1110) })
-    }
 }
 
 #[derive(Copy, Clone)]
@@ -880,15 +737,11 @@ pub type u32x4x2_sse2<S3, S4, NI> = x2<u32x4_sse2<S3, S4, NI>, G0>;
 pub type u64x2x2_sse2<S3, S4, NI> = x2<u64x2_sse2<S3, S4, NI>, G0>;
 #[allow(non_camel_case_types)]
 pub type u64x4_sse2<S3, S4, NI> = x2<u64x2_sse2<S3, S4, NI>, G1>;
-#[allow(non_camel_case_types)]
-pub type u128x2_sse2<S3, S4, NI> = x2<u128x1_sse2<S3, S4, NI>, G0>;
 
 #[allow(non_camel_case_types)]
 pub type u32x4x4_sse2<S3, S4, NI> = x4<u32x4_sse2<S3, S4, NI>>;
 #[allow(non_camel_case_types)]
 pub type u64x2x4_sse2<S3, S4, NI> = x4<u64x2_sse2<S3, S4, NI>>;
-#[allow(non_camel_case_types)]
-pub type u128x4_sse2<S3, S4, NI> = x4<u128x1_sse2<S3, S4, NI>>;
 
 impl<S3: Copy, S4: Copy, NI: Copy> u32x4x2<Machine86<S3, S4, NI>> for u32x4x2_sse2<S3, S4, NI>
 where
@@ -913,17 +766,6 @@ where
     u64x4_sse2<S3, S4, NI>: MultiLane<[u64; 4]> + Vec4<u64> + Words4,
 {
 }
-impl<S3: Copy, S4: Copy, NI: Copy> u128x2<Machine86<S3, S4, NI>> for u128x2_sse2<S3, S4, NI>
-where
-    u128x1_sse2<S3, S4, NI>: Swap64 + BSwap,
-    Machine86<S3, S4, NI>: Machine,
-    u128x2_sse2<S3, S4, NI>: MultiLane<[<Machine86<S3, S4, NI> as Machine>::u128x1; 2]>,
-    u128x2_sse2<S3, S4, NI>: Vec2<<Machine86<S3, S4, NI> as Machine>::u128x1>,
-    u128x2_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u32x4x2>,
-    u128x2_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u64x2x2>,
-    u128x2_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u64x4>,
-{
-}
 
 impl<NI: Copy> u32x4x2<Avx2Machine<NI>> for u32x4x2_sse2<YesS3, YesS4, NI>
 where
@@ -946,17 +788,6 @@ where
     u64x2_sse2<YesS3, YesS4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap,
     Avx2Machine<NI>: Machine,
     u64x4_sse2<YesS3, YesS4, NI>: MultiLane<[u64; 4]> + Vec4<u64> + Words4,
-{
-}
-impl<NI: Copy> u128x2<Avx2Machine<NI>> for u128x2_sse2<YesS3, YesS4, NI>
-where
-    u128x1_sse2<YesS3, YesS4, NI>: Swap64 + BSwap,
-    Avx2Machine<NI>: Machine,
-    u128x2_sse2<YesS3, YesS4, NI>: MultiLane<[<Avx2Machine<NI> as Machine>::u128x1; 2]>,
-    u128x2_sse2<YesS3, YesS4, NI>: Vec2<<Avx2Machine<NI> as Machine>::u128x1>,
-    u128x2_sse2<YesS3, YesS4, NI>: Into<<Avx2Machine<NI> as Machine>::u32x4x2>,
-    u128x2_sse2<YesS3, YesS4, NI>: Into<<Avx2Machine<NI> as Machine>::u64x2x2>,
-    u128x2_sse2<YesS3, YesS4, NI>: Into<<Avx2Machine<NI> as Machine>::u64x4>,
 {
 }
 
@@ -1003,16 +834,6 @@ where
     u64x2x4_sse2<S3, S4, NI>: Vec4<<Machine86<S3, S4, NI> as Machine>::u64x2>,
 {
 }
-impl<S3: Copy, S4: Copy, NI: Copy> u128x4<Machine86<S3, S4, NI>> for u128x4_sse2<S3, S4, NI>
-where
-    u128x1_sse2<S3, S4, NI>: Swap64 + BSwap,
-    Machine86<S3, S4, NI>: Machine,
-    u128x4_sse2<S3, S4, NI>: MultiLane<[<Machine86<S3, S4, NI> as Machine>::u128x1; 4]>,
-    u128x4_sse2<S3, S4, NI>: Vec4<<Machine86<S3, S4, NI> as Machine>::u128x1>,
-    u128x4_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u32x4x4>,
-    u128x4_sse2<S3, S4, NI>: Into<<Machine86<S3, S4, NI> as Machine>::u64x2x4>,
-{
-}
 
 impl<NI: Copy> u32x4x4<Avx2Machine<NI>> for u32x4x4_sse2<YesS3, YesS4, NI>
 where
@@ -1028,16 +849,6 @@ where
     Avx2Machine<NI>: Machine,
     u64x2x4_sse2<YesS3, YesS4, NI>: MultiLane<[<Avx2Machine<NI> as Machine>::u64x2; 4]>,
     u64x2x4_sse2<YesS3, YesS4, NI>: Vec4<<Avx2Machine<NI> as Machine>::u64x2>,
-{
-}
-impl<NI: Copy> u128x4<Avx2Machine<NI>> for u128x4_sse2<YesS3, YesS4, NI>
-where
-    u128x1_sse2<YesS3, YesS4, NI>: Swap64 + BSwap,
-    Avx2Machine<NI>: Machine,
-    u128x4_sse2<YesS3, YesS4, NI>: MultiLane<[<Avx2Machine<NI> as Machine>::u128x1; 4]>,
-    u128x4_sse2<YesS3, YesS4, NI>: Vec4<<Avx2Machine<NI> as Machine>::u128x1>,
-    u128x4_sse2<YesS3, YesS4, NI>: Into<<Avx2Machine<NI> as Machine>::u32x4x4>,
-    u128x4_sse2<YesS3, YesS4, NI>: Into<<Avx2Machine<NI> as Machine>::u64x2x4>,
 {
 }
 
@@ -1064,8 +875,6 @@ macro_rules! impl_into_x {
         }
     };
 }
-impl_into_x!(u128x1_sse2, u64x2_sse2);
-impl_into_x!(u128x1_sse2, u32x4_sse2);
 
 ///// Debugging
 
@@ -1386,7 +1195,7 @@ pub mod avx2 {
     #![allow(non_camel_case_types)]
     use crate::soft::x4;
     use crate::types::*;
-    use crate::x86_64::sse2::{u128x1_sse2, u32x4_sse2};
+    use crate::x86_64::sse2::u32x4_sse2;
     use crate::x86_64::{vec256_storage, vec512_storage, Avx2Machine, YesS3, YesS4};
     use core::arch::x86_64::*;
     use core::marker::PhantomData;
@@ -1614,20 +1423,5 @@ pub mod avx2 {
 
     impl<NI> BSwap for u32x4x4_avx2<NI> {
         shuf_lane_bytes!(bswap, 0x0c0d_0e0f_0809_0a0b, 0x0405_0607_0001_0203);
-    }
-
-    impl<NI> From<x4<u128x1_sse2<YesS3, YesS4, NI>>> for u32x4x4_avx2<NI>
-    where
-        NI: Copy,
-    {
-        #[inline(always)]
-        fn from(x: x4<u128x1_sse2<YesS3, YesS4, NI>>) -> Self {
-            Self::new(unsafe {
-                [
-                    _mm256_setr_m128i(x.0[0].x, x.0[1].x),
-                    _mm256_setr_m128i(x.0[2].x, x.0[3].x),
-                ]
-            })
-        }
     }
 }

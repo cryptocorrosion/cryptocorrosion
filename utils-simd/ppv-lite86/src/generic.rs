@@ -1,14 +1,13 @@
 #![allow(non_camel_case_types)]
 
-use core::ops::*;
 use crate::soft::{x2, x4};
 use crate::types::*;
+use core::ops::*;
 
 #[derive(Clone, Copy)]
 pub union vec128_storage {
     d: [u32; 4],
     q: [u64; 2],
-    o: [u128; 1],
 }
 impl From<[u32; 4]> for vec128_storage {
     #[inline]
@@ -106,40 +105,9 @@ where
     unsafe { T::unpack(q) }
 }
 
-fn omap<T, F>(a: T, f: F) -> T
-where
-    T: Store<vec128_storage> + Into<vec128_storage>,
-    F: Fn(u128) -> u128,
-{
-    let a: vec128_storage = a.into();
-    let ao = unsafe { a.o };
-    let o = vec128_storage { o: [f(ao[0])] };
-    unsafe { T::unpack(o) }
-}
-
-fn omap2<T, F>(a: T, b: T, f: F) -> T
-where
-    T: Store<vec128_storage> + Into<vec128_storage>,
-    F: Fn(u128, u128) -> u128,
-{
-    let a: vec128_storage = a.into();
-    let b: vec128_storage = b.into();
-    let ao = unsafe { a.o };
-    let bo = unsafe { b.o };
-    let o = vec128_storage {
-        o: [f(ao[0], bo[0])],
-    };
-    unsafe { T::unpack(o) }
-}
-
-impl RotateEachWord128 for u128x1_generic {}
-impl BitOps128 for u128x1_generic {}
-impl BitOps64 for u128x1_generic {}
 impl BitOps64 for u64x2_generic {}
-impl BitOps32 for u128x1_generic {}
 impl BitOps32 for u64x2_generic {}
 impl BitOps32 for u32x4_generic {}
-impl BitOps0 for u128x1_generic {}
 impl BitOps0 for u64x2_generic {}
 impl BitOps0 for u32x4_generic {}
 
@@ -241,7 +209,6 @@ macro_rules! impl_bitops {
 }
 impl_bitops!(u32x4_generic);
 impl_bitops!(u64x2_generic);
-impl_bitops!(u128x1_generic);
 
 impl RotateEachWord32 for u32x4_generic {
     #[inline]
@@ -319,60 +286,16 @@ impl RotateEachWord64 for u64x2_generic {
     }
 }
 
-impl RotateEachWord32 for u128x1_generic {
-    #[inline]
-    fn rotate_each_word_right7(self) -> Self {
-        Self([self.0[0].rotate_right(7)])
-    }
-    #[inline]
-    fn rotate_each_word_right8(self) -> Self {
-        Self([self.0[0].rotate_right(8)])
-    }
-    #[inline]
-    fn rotate_each_word_right11(self) -> Self {
-        Self([self.0[0].rotate_right(11)])
-    }
-    #[inline]
-    fn rotate_each_word_right12(self) -> Self {
-        Self([self.0[0].rotate_right(12)])
-    }
-    #[inline]
-    fn rotate_each_word_right16(self) -> Self {
-        Self([self.0[0].rotate_right(16)])
-    }
-    #[inline]
-    fn rotate_each_word_right20(self) -> Self {
-        Self([self.0[0].rotate_right(20)])
-    }
-    #[inline]
-    fn rotate_each_word_right24(self) -> Self {
-        Self([self.0[0].rotate_right(24)])
-    }
-    #[inline]
-    fn rotate_each_word_right25(self) -> Self {
-        Self([self.0[0].rotate_right(25)])
-    }
-}
-impl RotateEachWord64 for u128x1_generic {
-    #[inline]
-    fn rotate_each_word_right32(self) -> Self {
-        Self([self.0[0].rotate_right(32)])
-    }
-}
-
 #[derive(Copy, Clone)]
 pub struct GenericMachine;
 impl Machine for GenericMachine {
     type u32x4 = u32x4_generic;
     type u64x2 = u64x2_generic;
-    type u128x1 = u128x1_generic;
     type u32x4x2 = u32x4x2_generic;
     type u64x2x2 = u64x2x2_generic;
     type u64x4 = u64x4_generic;
-    type u128x2 = u128x2_generic;
     type u32x4x4 = u32x4x4_generic;
     type u64x2x4 = u64x2x4_generic;
-    type u128x4 = u128x4_generic;
     #[inline]
     unsafe fn instance() -> Self {
         Self
@@ -383,8 +306,6 @@ impl Machine for GenericMachine {
 pub struct u32x4_generic([u32; 4]);
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct u64x2_generic([u64; 2]);
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct u128x1_generic([u128; 1]);
 
 impl From<u32x4_generic> for vec128_storage {
     #[inline(always)]
@@ -396,12 +317,6 @@ impl From<u64x2_generic> for vec128_storage {
     #[inline(always)]
     fn from(q: u64x2_generic) -> Self {
         Self { q: q.0 }
-    }
-}
-impl From<u128x1_generic> for vec128_storage {
-    #[inline(always)]
-    fn from(o: u128x1_generic) -> Self {
-        Self { o: o.0 }
     }
 }
 
@@ -417,16 +332,9 @@ impl Store<vec128_storage> for u64x2_generic {
         Self(s.q)
     }
 }
-impl Store<vec128_storage> for u128x1_generic {
-    #[inline(always)]
-    unsafe fn unpack(s: vec128_storage) -> Self {
-        Self(s.o)
-    }
-}
 
 impl ArithOps for u32x4_generic {}
 impl ArithOps for u64x2_generic {}
-impl ArithOps for u128x1_generic {}
 
 impl Add for u32x4_generic {
     type Output = Self;
@@ -442,13 +350,6 @@ impl Add for u64x2_generic {
         qmap2(self, rhs, |x, y| x.wrapping_add(y))
     }
 }
-impl Add for u128x1_generic {
-    type Output = Self;
-    #[inline(always)]
-    fn add(self, rhs: Self) -> Self::Output {
-        omap2(self, rhs, |x, y| x.wrapping_add(y))
-    }
-}
 impl AddAssign for u32x4_generic {
     #[inline(always)]
     fn add_assign(&mut self, rhs: Self) {
@@ -456,12 +357,6 @@ impl AddAssign for u32x4_generic {
     }
 }
 impl AddAssign for u64x2_generic {
-    #[inline(always)]
-    fn add_assign(&mut self, rhs: Self) {
-        *self = *self + rhs
-    }
-}
-impl AddAssign for u128x1_generic {
     #[inline(always)]
     fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs
@@ -477,12 +372,6 @@ impl BSwap for u64x2_generic {
     #[inline(always)]
     fn bswap(self) -> Self {
         qmap(self, |x| x.swap_bytes())
-    }
-}
-impl BSwap for u128x1_generic {
-    #[inline(always)]
-    fn bswap(self) -> Self {
-        omap(self, |x| x.swap_bytes())
     }
 }
 impl StoreBytes for u32x4_generic {
@@ -545,10 +434,8 @@ pub struct G1;
 pub type u32x4x2_generic = x2<u32x4_generic, G0>;
 pub type u64x2x2_generic = x2<u64x2_generic, G0>;
 pub type u64x4_generic = x2<u64x2_generic, G1>;
-pub type u128x2_generic = x2<u128x1_generic, G0>;
 pub type u32x4x4_generic = x4<u32x4_generic>;
 pub type u64x2x4_generic = x4<u64x2_generic>;
-pub type u128x4_generic = x4<u128x1_generic>;
 
 impl MultiLane<[u32; 4]> for u32x4_generic {
     #[inline(always)]
@@ -583,16 +470,6 @@ impl MultiLane<[u64; 4]> for u64x4_generic {
             u64x2_generic::from_lanes([xs[2], xs[3]]),
         );
         x2::new([a, b])
-    }
-}
-impl MultiLane<[u128; 1]> for u128x1_generic {
-    #[inline(always)]
-    fn to_lanes(self) -> [u128; 1] {
-        self.0
-    }
-    #[inline(always)]
-    fn from_lanes(xs: [u128; 1]) -> Self {
-        Self(xs)
     }
 }
 impl Vec4<u32> for u32x4_generic {
@@ -676,14 +553,11 @@ impl Words4 for u64x4_generic {
 
 impl u32x4<GenericMachine> for u32x4_generic {}
 impl u64x2<GenericMachine> for u64x2_generic {}
-impl u128x1<GenericMachine> for u128x1_generic {}
 impl u32x4x2<GenericMachine> for u32x4x2_generic {}
 impl u64x2x2<GenericMachine> for u64x2x2_generic {}
 impl u64x4<GenericMachine> for u64x4_generic {}
-impl u128x2<GenericMachine> for u128x2_generic {}
 impl u32x4x4<GenericMachine> for u32x4x4_generic {}
 impl u64x2x4<GenericMachine> for u64x2x4_generic {}
-impl u128x4<GenericMachine> for u128x4_generic {}
 
 #[macro_export]
 macro_rules! dispatch {
