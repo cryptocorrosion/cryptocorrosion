@@ -319,44 +319,54 @@ impl RotateEachWord64 for u64x2_generic {
     }
 }
 
+// workaround for koute/cargo-web#52 (u128::rotate_* broken with cargo web)
+fn rotate_u128_right(x: u128, i: u32) -> u128 {
+    (x >> i) | (x << (128 - i))
+}
+#[test]
+fn test_rotate_u128() {
+    const X: u128 = 0x0001_0203_0405_0607_0809_0a0b_0c0d_0e0f;
+    assert_eq!(rotate_u128_right(X, 17), X.rotate_right(17));
+}
+
 impl RotateEachWord32 for u128x1_generic {
     #[inline]
     fn rotate_each_word_right7(self) -> Self {
-        Self([self.0[0].rotate_right(7)])
+        Self([rotate_u128_right(self.0[0], 7)])
     }
     #[inline]
     fn rotate_each_word_right8(self) -> Self {
-        Self([self.0[0].rotate_right(8)])
+        Self([rotate_u128_right(self.0[0], 8)])
     }
     #[inline]
     fn rotate_each_word_right11(self) -> Self {
-        Self([self.0[0].rotate_right(11)])
+        Self([rotate_u128_right(self.0[0], 11)])
     }
     #[inline]
     fn rotate_each_word_right12(self) -> Self {
-        Self([self.0[0].rotate_right(12)])
+        Self([rotate_u128_right(self.0[0], 12)])
     }
     #[inline]
     fn rotate_each_word_right16(self) -> Self {
-        Self([self.0[0].rotate_right(16)])
+        Self([rotate_u128_right(self.0[0], 16)])
     }
     #[inline]
     fn rotate_each_word_right20(self) -> Self {
-        Self([self.0[0].rotate_right(20)])
+        Self([rotate_u128_right(self.0[0], 20)])
     }
     #[inline]
     fn rotate_each_word_right24(self) -> Self {
-        Self([self.0[0].rotate_right(24)])
+        Self([rotate_u128_right(self.0[0], 24)])
     }
     #[inline]
     fn rotate_each_word_right25(self) -> Self {
-        Self([self.0[0].rotate_right(25)])
+        Self([rotate_u128_right(self.0[0], 25)])
     }
 }
 impl RotateEachWord64 for u128x1_generic {
     #[inline]
     fn rotate_each_word_right32(self) -> Self {
-        Self([self.0[0].rotate_right(32)])
+        Self([rotate_u128_right(self.0[0], 32)])
     }
 }
 
@@ -637,11 +647,13 @@ impl Words4 for u32x4_generic {
     }
     #[inline(always)]
     fn shuffle1230(self) -> Self {
-        omap(self, |x| x.to_le().rotate_left(32).to_le())
+        let x = self.0;
+        Self([x[3], x[0], x[1], x[2]])
     }
     #[inline(always)]
     fn shuffle3012(self) -> Self {
-        omap(self, |x| x.to_le().rotate_right(32).to_le())
+        let x = self.0;
+        Self([x[1], x[2], x[3], x[0]])
     }
 }
 impl LaneWords4 for u32x4_generic {
