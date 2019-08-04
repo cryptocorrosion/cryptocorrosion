@@ -18,7 +18,7 @@ ppv-lite86 = { package = "ppv-lite86", version = "0.2.1", default-features = fal
 stream-cipher = { version = "0.3", optional = true }
 
 [dev-dependencies]
-hex-literal = "0.1"
+hex-literal = "0.2"
 
 [features]
 default = ["std", "simd", "rustcrypto_api"]
