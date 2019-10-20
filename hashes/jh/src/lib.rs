@@ -7,9 +7,6 @@
 pub extern crate digest;
 #[macro_use]
 extern crate hex_literal;
-#[cfg(all(feature = "std"))]
-#[macro_use]
-extern crate lazy_static;
 #[macro_use]
 pub extern crate simd;
 
