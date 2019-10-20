@@ -13,7 +13,7 @@ edition = "2018"
 [dependencies]
 block-buffer = "0.7"
 digest = "0.8"
-hex-literal = "0.1"
+hex-literal = "0.2"
 simd = { package = "ppv-lite86", version = "0.2" }
 
 [dev-dependencies]
