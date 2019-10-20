@@ -10,9 +10,6 @@ extern crate block_buffer;
 pub extern crate digest;
 #[macro_use]
 pub extern crate simd;
-#[cfg(feature = "std")]
-#[macro_use]
-extern crate lazy_static;
 
 mod consts;
 
