@@ -1,6 +1,6 @@
 [package]
 name = "ppv-lite86"
-version = "0.2.5"
+version = "0.2.6"
 authors = ["The CryptoCorrosion Contributors"]
 edition = "2018"
 license = "MIT/Apache-2.0"

@@ -1,6 +1,6 @@
 [package]
 name = "blake-hash"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["The CryptoCorrosion Contributors"]
 license = "MIT/Apache-2.0"
 description = "BLAKE hash functions"
@@ -11,7 +11,7 @@ categories = ["cryptography", "no-std"]
 [dependencies]
 block-buffer = "0.7"
 digest = "0.8"
-simd = { package = "ppv-lite86", version = "0.2.0", optional = true }
+simd = { package = "ppv-lite86", version = "0.2.6", optional = true }
 
 [features]
 default = ["simd", "std"]
