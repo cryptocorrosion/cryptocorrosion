@@ -62,9 +62,35 @@ pub(crate) fn undiagonalize<V: LaneWords4>(mut x: State<V>) -> State<V> {
 }
 
 impl ChaCha {
-    #[inline(always)]
     pub fn new(key: &[u8; 32], nonce: &[u8]) -> Self {
-        init_chacha(key, nonce)
+        let ctr_nonce = [
+            0,
+            if nonce.len() == 12 {
+                read_u32le(&nonce[0..4])
+            } else {
+                0
+            },
+            read_u32le(&nonce[nonce.len() - 8..nonce.len() - 4]),
+            read_u32le(&nonce[nonce.len() - 4..]),
+        ];
+        let key0 = [
+            read_u32le(&key[0..4]),
+            read_u32le(&key[4..8]),
+            read_u32le(&key[8..12]),
+            read_u32le(&key[12..16]),
+        ];
+        let key1 = [
+            read_u32le(&key[16..20]),
+            read_u32le(&key[20..24]),
+            read_u32le(&key[24..28]),
+            read_u32le(&key[28..32]),
+        ];
+
+        ChaCha {
+            b: key0.into(),
+            c: key1.into(),
+            d: ctr_nonce.into(),
+        }
     }
 
     #[inline(always)]
@@ -127,14 +153,22 @@ impl ChaCha {
         refill_narrow_rounds(self, drounds)
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn set_stream_param(&mut self, param: u32, value: u64) {
-        set_stream_param(self, param, value)
+        let mut d: [u32; 4] = self.d.into();
+        let p0 = ((param << 1) | 1) as usize;
+        let p1 = (param << 1) as usize;
+        d[p0] = (value >> 32) as u32;
+        d[p1] = value as u32;
+        self.d = d.into();
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn get_stream_param(&self, param: u32) -> u64 {
-        get_stream_param(self, param)
+        let d: [u32; 4] = self.d.into();
+        let p0 = ((param << 1) | 1) as usize;
+        let p1 = (param << 1) as usize;
+        ((d[p0] as u64) << 32) | d[p1] as u64
     }
 }
 
@@ -242,49 +276,10 @@ dispatch!(m, Mach, {
     }
 });
 
-dispatch_light128!(m, Mach, {
-    fn set_stream_param(state: &mut ChaCha, param: u32, value: u64) {
-        let d: Mach::u32x4 = m.unpack(state.d);
-        state.d = d
-            .insert((value >> 32) as u32, (param << 1) | 1)
-            .insert(value as u32, param << 1)
-            .into();
-    }
-});
-
-dispatch_light128!(m, Mach, {
-    fn get_stream_param(state: &ChaCha, param: u32) -> u64 {
-        let d: Mach::u32x4 = m.unpack(state.d);
-        ((d.extract((param << 1) | 1) as u64) << 32) | d.extract(param << 1) as u64
-    }
-});
-
 fn read_u32le(xs: &[u8]) -> u32 {
     assert_eq!(xs.len(), 4);
     u32::from(xs[0]) | (u32::from(xs[1]) << 8) | (u32::from(xs[2]) << 16) | (u32::from(xs[3]) << 24)
 }
-
-dispatch_light128!(m, Mach, {
-    fn init_chacha(key: &[u8; 32], nonce: &[u8]) -> ChaCha {
-        let ctr_nonce = [
-            0,
-            if nonce.len() == 12 {
-                read_u32le(&nonce[0..4])
-            } else {
-                0
-            },
-            read_u32le(&nonce[nonce.len() - 8..nonce.len() - 4]),
-            read_u32le(&nonce[nonce.len() - 4..]),
-        ];
-        let key0: Mach::u32x4 = m.read_le(&key[..16]);
-        let key1: Mach::u32x4 = m.read_le(&key[16..]);
-        ChaCha {
-            b: key0.into(),
-            c: key1.into(),
-            d: ctr_nonce.into(),
-        }
-    }
-});
 
 dispatch_light128!(m, Mach, {
     fn init_chacha_x(key: &[u8; 32], nonce: &[u8; 24], rounds: u32) -> ChaCha {
