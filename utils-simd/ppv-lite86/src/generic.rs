@@ -16,6 +16,12 @@ impl From<[u32; 4]> for vec128_storage {
         Self { d }
     }
 }
+impl From<vec128_storage> for [u32; 4] {
+    #[inline]
+    fn from(d: vec128_storage) -> Self {
+        unsafe { d.d }
+    }
+}
 #[derive(Clone, Copy)]
 pub struct vec256_storage {
     v128: [vec128_storage; 2],
