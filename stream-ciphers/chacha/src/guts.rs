@@ -42,14 +42,19 @@ pub(crate) fn round<V: ArithOps + BitOps32>(mut x: State<V>) -> State<V> {
 #[inline(always)]
 pub(crate) fn diagonalize<V: LaneWords4>(mut x: State<V>) -> State<V> {
     // Since b has the critical data dependency, avoid rotating b to hide latency.
+    //
+    // The order of these statements is important for performance on pre-AVX2 Intel machines, which
+    // are throughput-bound and operating near their superscalar limits during refill_wide. The
+    // permutations here and in undiagonalize have been found in testing on Nehalem to be optimal.
+    x.a = x.a.shuffle_lane_words1230();
     x.c = x.c.shuffle_lane_words3012();
     x.d = x.d.shuffle_lane_words2301();
-    x.a = x.a.shuffle_lane_words1230();
     x
 }
 
 #[inline(always)]
 pub(crate) fn undiagonalize<V: LaneWords4>(mut x: State<V>) -> State<V> {
+    // The order of these statements is magic. See comment in diagonalize.
     x.c = x.c.shuffle_lane_words1230();
     x.d = x.d.shuffle_lane_words2301();
     x.a = x.a.shuffle_lane_words3012();
