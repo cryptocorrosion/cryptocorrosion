@@ -18,3 +18,15 @@ pub fn stream_10k(b: &mut Bencher) {
     });
     b.bytes = 10240;
 }
+
+#[bench]
+pub fn stream_narrow_10k(b: &mut Bencher) {
+    let mut state = ChaCha20::new_var(&[0; 32], &[0; 8]).unwrap();
+    let mut result = [0; 192];
+    b.iter(|| {
+        for _ in 0..10 {
+            state.apply_keystream(&mut result)
+        }
+    });
+    b.bytes = 1920;
+}
