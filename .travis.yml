@@ -78,6 +78,9 @@ matrix:
     - env: TARGET=x86_64-unknown-linux-gnu
       rust: 1.31.1
 
+    # machine-specific tests are skipped based on static feature detection
+    - env: TARGET=x86_64-unknown-linux-gnu RUSTFLAGS="-C target-cpu=native"
+
 before_install:
   - set -e
   - rustup self update
