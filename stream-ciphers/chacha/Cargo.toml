@@ -1,6 +1,6 @@
 [package]
 name = "c2-chacha"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["The CryptoCorrosion Contributors"]
 license = "MIT/Apache-2.0"
 edition = "2018"
@@ -20,10 +20,11 @@ stream-cipher = { version = "0.3", optional = true }
 hex-literal = "0.2"
 
 [features]
-default = ["std", "simd", "rustcrypto_api"]
+default = ["std", "rustcrypto_api"]
 std = ["ppv-lite86/std"]
 rustcrypto_api = ["stream-cipher", "byteorder"]
-simd = ["ppv-lite86/simd"]
+no_simd = ["ppv-lite86/no_simd"]
+simd = [] # deprecated
 
 [badges]
 travis-ci = { repository = "cryptocorrosion/cryptocorrosion" }
