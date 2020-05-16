@@ -172,6 +172,22 @@ impl ChaCha {
         let p1 = (param << 1) as usize;
         ((d[p0] as u64) << 32) | d[p1] as u64
     }
+
+    /// Return whether rhs represents the same stream, irrespective of current 32-bit position.
+    #[inline]
+    pub fn stream32_eq(&self, rhs: &Self) -> bool {
+        let self_d: [u32; 4] = self.d.into();
+        let rhs_d: [u32; 4] = rhs.d.into();
+        self.b == rhs.b && self.c == rhs.c && self_d[3] == rhs_d[3] && self_d[2] == rhs_d[2] && self_d[1] == rhs_d[1]
+    }
+
+    /// Return whether rhs represents the same stream, irrespective of current 64-bit position.
+    #[inline]
+    pub fn stream64_eq(&self, rhs: &Self) -> bool {
+        let self_d: [u32; 4] = self.d.into();
+        let rhs_d: [u32; 4] = rhs.d.into();
+        self.b == rhs.b && self.c == rhs.c && self_d[3] == rhs_d[3] && self_d[2] == rhs_d[2]
+    }
 }
 
 #[inline(always)]
@@ -301,3 +317,25 @@ dispatch_light128!(m, Mach, {
         state
     }
 });
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Basic check that streamXX_eq is block-count invariant
+    #[test]
+    fn test_stream_eq() {
+        let key = hex!("fa44478c59ca70538e3549096ce8b523232c50d9e8e8d10c203ef6c8d07098a5");
+        let nonce = hex!("8d3a0d6d7827c00701020304");
+        let mut a = ChaCha::new(&key, &nonce);
+        let b = a.clone();
+        let mut out = [0u8; BLOCK];
+        assert!(a == b);
+        assert!(a.stream32_eq(&b));
+        assert!(a.stream64_eq(&b));
+        a.refill(0, &mut out);
+        assert!(a != b);
+        assert!(a.stream32_eq(&b));
+        assert!(a.stream64_eq(&b));
+    }
+}
