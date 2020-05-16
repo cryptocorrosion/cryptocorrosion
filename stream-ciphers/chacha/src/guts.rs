@@ -11,14 +11,16 @@ const BUFBLOCKS: u64 = 1 << LOG2_BUFBLOCKS;
 pub(crate) const BUFSZ64: u64 = BLOCK64 * BUFBLOCKS;
 pub(crate) const BUFSZ: usize = BUFSZ64 as usize;
 
-#[derive(Clone)]
+/// Parameters of a ChaCha stream, including fixed parameters and current position.
+#[derive(Clone, PartialEq, Eq)]
 pub struct ChaCha {
     pub(crate) b: vec128_storage,
     pub(crate) c: vec128_storage,
     pub(crate) d: vec128_storage,
 }
 
-#[derive(Clone)]
+/// Working state of a ChaCha stream.
+#[derive(Clone, PartialEq, Eq)]
 pub struct State<V> {
     pub(crate) a: V,
     pub(crate) b: V,
