@@ -76,7 +76,7 @@ matrix:
     - env: TARGET=x86_64-unknown-linux-gnu
       rust: stable
     - env: TARGET=x86_64-unknown-linux-gnu
-      rust: 1.31.1
+      rust: 1.32.0
 
     # machine-specific tests are skipped based on static feature detection
     - env: TARGET=x86_64-unknown-linux-gnu RUSTFLAGS="-C target-cpu=native"

@@ -6,7 +6,7 @@ The main interface to these crates is the RustCrypto traits.
 
 All crates are no-std compatible.
 
-Minimum Rust version: 1.31.
+Minimum Rust version: 1.32.0
 
 [![Build Status](https://travis-ci.org/cryptocorrosion/cryptocorrosion.svg?branch=master)](https://travis-ci.org/cryptocorrosion/cryptocorrosion)
 
