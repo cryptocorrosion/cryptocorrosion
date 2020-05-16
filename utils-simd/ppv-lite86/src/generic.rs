@@ -22,6 +22,24 @@ impl From<vec128_storage> for [u32; 4] {
         unsafe { d.d }
     }
 }
+impl From<[u64; 2]> for vec128_storage {
+    #[inline]
+    fn from(q: [u64; 2]) -> Self {
+        Self { q }
+    }
+}
+impl From<vec128_storage> for [u64; 2] {
+    #[inline]
+    fn from(q: vec128_storage) -> Self {
+        unsafe { q.q }
+    }
+}
+impl Default for vec128_storage {
+    #[inline]
+    fn default() -> Self {
+        Self { o: [0] }
+    }
+}
 impl Eq for vec128_storage {}
 impl PartialEq<vec128_storage> for vec128_storage {
     #[inline]
@@ -29,7 +47,7 @@ impl PartialEq<vec128_storage> for vec128_storage {
         unsafe { self.o == rhs.o }
     }
 }
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub struct vec256_storage {
     v128: [vec128_storage; 2],
 }
@@ -43,7 +61,21 @@ impl vec256_storage {
         self.v128
     }
 }
-#[derive(Clone, Copy, PartialEq, Eq)]
+impl From<[u64; 4]> for vec256_storage {
+    #[inline]
+    fn from(q: [u64; 4]) -> Self {
+        Self { v128: [[0, 1].into(), [2, 3].into()] }
+    }
+}
+impl From<vec256_storage> for [u64; 4] {
+    #[inline]
+    fn from(q: vec256_storage) -> Self {
+        let [a, b]: [u64; 2] = q.v128[0].into();
+        let [c, d]: [u64; 2] = q.v128[1].into();
+        [a, b, c, d]
+    }
+}
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub struct vec512_storage {
     v128: [vec128_storage; 4],
 }
