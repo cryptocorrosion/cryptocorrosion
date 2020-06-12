@@ -9,8 +9,8 @@ keywords = ["crypto", "blake", "hash", "digest"]
 categories = ["cryptography", "no-std"]
 
 [dependencies]
-block-buffer = "0.7"
-digest = "0.8"
+block-buffer = "0.9"
+digest = "0.9"
 simd = { package = "ppv-lite86", version = "0.2.6", optional = true }
 
 [features]
@@ -18,7 +18,7 @@ default = ["simd", "std"]
 std = []
 
 [dev-dependencies]
-digest = { version = "0.8", features = ["dev"] }
+digest = { version = "0.9", features = ["dev"] }
 
 [badges]
 travis-ci = { repository = "cryptocorrosion/cryptocorrosion" }

@@ -13,8 +13,8 @@ pub extern crate simd;
 
 mod consts;
 
-use block_buffer::byteorder::{ByteOrder, BE};
 use block_buffer::BlockBuffer;
+use core::convert::TryInto;
 use core::mem;
 use digest::generic_array::typenum::{PartialDiv, Unsigned, U2};
 use digest::generic_array::GenericArray;
@@ -84,7 +84,7 @@ fn undiagonalize<X4: Words4>((a, b, c, d): (X4, X4, X4, X4)) -> (X4, X4, X4, X4)
 }
 
 macro_rules! define_compressor {
-    ($compressor:ident, $storage:ident, $word:ident, $Bufsz:ty, $deserializer:path, $uval:expr, $rounds:expr, $round:ident, $X4:ident) => {
+    ($compressor:ident, $storage:ident, $word:ident, $Bufsz:ty, $uval:expr, $rounds:expr, $round:ident, $X4:ident) => {
         #[derive(Clone, Copy, Default)]
         pub struct $compressor {
             h: [$storage; 2],
@@ -102,7 +102,7 @@ macro_rules! define_compressor {
                     .iter_mut()
                     .zip(block.chunks_exact(mem::size_of::<$word>()))
                 {
-                    *mx = $deserializer(b);
+                    *mx = $word::from_be_bytes(b.try_into().unwrap());
                 }
 
                 let u = (mach.vec([U[0], U[1], U[2], U[3]]), mach.vec([U[4], U[5], U[6], U[7]]));
@@ -158,7 +158,7 @@ macro_rules! define_compressor {
 
 macro_rules! define_hasher {
     ($name:ident, $word:ident, $buf:expr, $Bufsz:ty, $bits:expr, $Bytes:ident,
-     $serializer:path, $compressor:ident, $iv:expr) => {
+     $compressor:ident, $iv:expr) => {
         #[derive(Clone)]
         pub struct $name {
             compressor: $compressor,
@@ -198,30 +198,30 @@ macro_rules! define_hasher {
             type BlockSize = $Bytes;
         }
 
-        impl digest::Input for $name {
-            fn input<T: AsRef<[u8]>>(&mut self, data: T) {
+        impl digest::Update for $name {
+            fn update(&mut self, data: impl AsRef<[u8]>) {
                 let compressor = &mut self.compressor;
                 let t = &mut self.t;
-                self.buffer.input(data.as_ref(), |block| {
+                self.buffer.input_block(data.as_ref(), |block| {
                     Self::increase_count(t, (mem::size_of::<$word>() * 16) as $word);
                     compressor.put_block(block, *t);
                 });
             }
         }
 
-        impl digest::FixedOutput for $name {
+        impl digest::FixedOutputDirty for $name {
             type OutputSize = $Bytes;
 
-            fn fixed_result(self) -> GenericArray<u8, $Bytes> {
+            fn finalize_into_dirty(&mut self, out: &mut GenericArray<u8, Self::OutputSize>) {
                 let mut compressor = self.compressor;
-                let mut buffer = self.buffer;
+                let buffer = &mut self.buffer;
                 let mut t = self.t;
 
                 Self::increase_count(&mut t, buffer.position() as $word);
 
                 let mut msglen = [0u8; $buf / 8];
-                $serializer(&mut msglen[..$buf / 16], t.1);
-                $serializer(&mut msglen[$buf / 16..], t.0);
+                msglen[..$buf / 16].copy_from_slice(&t.1.to_be_bytes());
+                msglen[$buf / 16..].copy_from_slice(&t.0.to_be_bytes());
 
                 let footerlen = 1 + 2 * mem::size_of::<$word>();
 
@@ -239,7 +239,7 @@ macro_rules! define_hasher {
                 let extra_block = buffer.position() + footerlen > $buf;
                 if extra_block {
                     let pad = $buf - buffer.position();
-                    buffer.input(&PADDING[..pad], |block| compressor.put_block(block, t));
+                    buffer.input_block(&PADDING[..pad], |block| compressor.put_block(block, t));
                     debug_assert_eq!(buffer.position(), 0);
                 }
 
@@ -251,12 +251,12 @@ macro_rules! define_hasher {
                 // skip begin-padding byte if continuing padding
                 let x = extra_block as usize;
                 let (start, end) = (x, x + ($buf - footerlen - buffer.position()));
-                buffer.input(&PADDING[start..end], |_| unreachable!());
-                buffer.input(&[magic], |_| unreachable!());
-                buffer.input(&msglen, |block| compressor.put_block(block, t));
+                buffer.input_block(&PADDING[start..end], |_| unreachable!());
+                buffer.input_block(&[magic], |_| unreachable!());
+                buffer.input_block(&msglen, |block| compressor.put_block(block, t));
                 debug_assert_eq!(buffer.position(), 0);
 
-                GenericArray::clone_from_slice(&compressor.finalize()[..$Bytes::to_usize()])
+                out.as_mut_slice().copy_from_slice(&compressor.finalize()[..$Bytes::to_usize()]);
             }
         }
 
@@ -274,19 +274,19 @@ use consts::{
 use digest::generic_array::typenum::{U128, U28, U32, U48, U64};
 
 #[rustfmt::skip]
-define_compressor!(Compressor256, vec128_storage, u32, U64, BE::read_u32, BLAKE256_U, 14, round32, u32x4);
+define_compressor!(Compressor256, vec128_storage, u32, U64, BLAKE256_U, 14, round32, u32x4);
 
 #[rustfmt::skip]
-define_hasher!(Blake224, u32, 64, U64, 224, U28, BE::write_u32, Compressor256, BLAKE224_IV);
+define_hasher!(Blake224, u32, 64, U64, 224, U28, Compressor256, BLAKE224_IV);
 
 #[rustfmt::skip]
-define_hasher!(Blake256, u32, 64, U64, 256, U32, BE::write_u32, Compressor256, BLAKE256_IV);
+define_hasher!(Blake256, u32, 64, U64, 256, U32, Compressor256, BLAKE256_IV);
 
 #[rustfmt::skip]
-define_compressor!(Compressor512, vec256_storage, u64, U128, BE::read_u64, BLAKE512_U, 16, round64, u64x4);
+define_compressor!(Compressor512, vec256_storage, u64, U128, BLAKE512_U, 16, round64, u64x4);
 
 #[rustfmt::skip]
-define_hasher!(Blake384, u64, 128, U128, 384, U48, BE::write_u64, Compressor512, BLAKE384_IV);
+define_hasher!(Blake384, u64, 128, U128, 384, U48, Compressor512, BLAKE384_IV);
 
 #[rustfmt::skip]
-define_hasher!(Blake512, u64, 128, U128, 512, U64, BE::write_u64, Compressor512, BLAKE512_IV);
+define_hasher!(Blake512, u64, 128, U128, 512, U64, Compressor512, BLAKE512_IV);
