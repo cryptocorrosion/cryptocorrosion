@@ -10,7 +10,6 @@ pub extern crate digest;
 #[macro_use]
 extern crate lazy_static;
 
-use block_buffer::byteorder::{BigEndian, ByteOrder, LE};
 use block_buffer::generic_array::typenum::{
     PartialDiv, Unsigned, U1024, U128, U16, U28, U48, U512, U64, U8,
 };
@@ -43,7 +42,7 @@ impl Compressor512 {
     fn input(&mut self, data: &BBGenericArray<u8, U64>) {
         tf512(&mut self.cv, data);
     }
-    fn finalize(mut self) -> Block512 {
+    fn finalize_dirty(&mut self) -> Block512 {
         of512(&mut self.cv);
         unsafe { CvBytes512 { cv: self.cv }.block }
     }
@@ -66,7 +65,7 @@ impl Compressor1024 {
     fn input(&mut self, data: &BBGenericArray<u8, U128>) {
         tf1024(&mut self.cv, data);
     }
-    fn finalize(mut self) -> Block1024 {
+    fn finalize_dirty(&mut self) -> Block1024 {
         of1024(&mut self.cv);
         unsafe { CvBytes1024 { cv: self.cv }.block }
     }
@@ -91,12 +90,12 @@ macro_rules! impl_digest {
                     block_counter: 0,
                 }
             }
-            fn finalize(self) -> [u64; $bits::USIZE / 64] {
-                let mut buffer = self.buffer;
-                let mut compressor = self.compressor;
+            fn finalize_dirty(&mut self) -> [u64; $bits::USIZE / 64] {
+                let buffer = &mut self.buffer;
+                let compressor = &mut self.compressor;
                 let count = self.block_counter + 1 + (buffer.remaining() <= 8) as u64;
-                buffer.len64_padding::<BigEndian, _>(count, |b| compressor.input(b));
-                compressor.finalize()
+                buffer.len64_padding_be(count, |b| compressor.input(b));
+                compressor.finalize_dirty()
             }
         }
         impl Default for $groestl {
@@ -112,25 +111,23 @@ macro_rules! impl_digest {
         impl digest::BlockInput for $groestl {
             type BlockSize = <$bits as PartialDiv<U8>>::Output;
         }
-        impl digest::Input for $groestl {
-            fn input<T: AsRef<[u8]>>(&mut self, data: T) {
+        impl digest::Update for $groestl {
+            fn update(&mut self, data: impl AsRef<[u8]>) {
                 let block_counter = &mut self.block_counter;
                 let compressor = &mut self.compressor;
-                self.buffer.input(data.as_ref(), |b| {
+                self.buffer.input_block(data.as_ref(), |b| {
                     *block_counter += 1;
                     compressor.input(b)
                 });
             }
         }
-        impl digest::FixedOutput for $groestl {
+        impl digest::FixedOutputDirty for $groestl {
             type OutputSize = <$bits as PartialDiv<U16>>::Output;
-            fn fixed_result(self) -> DGenericArray<u8, Self::OutputSize> {
-                let result = self.finalize();
-                let mut out: DGenericArray<u8, Self::OutputSize> = DGenericArray::default();
+            fn finalize_into_dirty(&mut self, out: &mut DGenericArray<u8, Self::OutputSize>) {
+                let result = self.finalize_dirty();
                 for (out, &input) in out.chunks_exact_mut(8).zip(&result[$bits::USIZE / 128..]) {
-                    LE::write_u64(out, input);
+                    out.copy_from_slice(&input.to_le_bytes());
                 }
-                out
             }
         }
         impl digest::Reset for $groestl {
@@ -154,21 +151,19 @@ impl Default for Groestl224 {
 impl digest::BlockInput for Groestl224 {
     type BlockSize = U64;
 }
-impl digest::Input for Groestl224 {
-    fn input<T: AsRef<[u8]>>(&mut self, data: T) {
-        digest::Input::input(&mut self.0, data.as_ref());
+impl digest::Update for Groestl224 {
+    fn update(&mut self, data: impl AsRef<[u8]>) {
+        digest::Update::update(&mut self.0, data.as_ref());
     }
 }
-impl digest::FixedOutput for Groestl224 {
+impl digest::FixedOutputDirty for Groestl224 {
     type OutputSize = U28;
-    fn fixed_result(self) -> DGenericArray<u8, U28> {
-        let result = self.0.finalize();
-        let mut out: DGenericArray<u8, U28> = DGenericArray::default();
-        LE::write_u32(&mut out[..4], (result[4] >> 32) as u32);
+    fn finalize_into_dirty(&mut self, out: &mut DGenericArray<u8, Self::OutputSize>) {
+        let result = self.0.finalize_dirty();
+        out[..4].copy_from_slice(&((result[4] >> 32) as u32).to_le_bytes());
         for (out, &input) in out[4..].chunks_exact_mut(8).zip(&result[5..8]) {
-            LE::write_u64(out, input);
+            out.copy_from_slice(&input.to_le_bytes());
         }
-        out
     }
 }
 impl digest::Reset for Groestl224 {
@@ -187,20 +182,18 @@ impl Default for Groestl384 {
 impl digest::BlockInput for Groestl384 {
     type BlockSize = <Groestl512 as digest::BlockInput>::BlockSize;
 }
-impl digest::Input for Groestl384 {
-    fn input<T: AsRef<[u8]>>(&mut self, data: T) {
-        digest::Input::input(&mut self.0, data.as_ref());
+impl digest::Update for Groestl384 {
+    fn update(&mut self, data: impl AsRef<[u8]>) {
+        digest::Update::update(&mut self.0, data.as_ref());
     }
 }
-impl digest::FixedOutput for Groestl384 {
+impl digest::FixedOutputDirty for Groestl384 {
     type OutputSize = U48;
-    fn fixed_result(self) -> DGenericArray<u8, U48> {
-        let result = self.0.finalize();
-        let mut out: DGenericArray<u8, U48> = DGenericArray::default();
+    fn finalize_into_dirty(&mut self, out: &mut DGenericArray<u8, Self::OutputSize>) {
+        let result = self.0.finalize_dirty();
         for (out, &input) in out.chunks_exact_mut(8).zip(&result[10..]) {
-            LE::write_u64(out, input);
+            out.copy_from_slice(&input.to_le_bytes());
         }
-        out
     }
 }
 impl digest::Reset for Groestl384 {
