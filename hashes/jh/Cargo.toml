@@ -11,13 +11,13 @@ repository = "https://github.com/cryptocorrosion/cryptocorrosion"
 edition = "2018"
 
 [dependencies]
-block-buffer = "0.7"
-digest = "0.8"
+block-buffer = "0.9"
+digest = "0.9"
 hex-literal = "0.2"
 simd = { package = "ppv-lite86", version = "0.2.6" }
 
 [dev-dependencies]
-digest = { version = "0.8", features = ["dev"] }
+digest = { version = "0.9", features = ["dev"] }
 
 [build-dependencies]
 cc = "1.0.3"
