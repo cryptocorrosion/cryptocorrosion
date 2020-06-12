@@ -15,7 +15,6 @@ mod consts;
 
 pub use digest::Digest;
 
-use block_buffer::byteorder::{BigEndian, ByteOrder};
 use block_buffer::generic_array::GenericArray as BBGenericArray;
 use block_buffer::BlockBuffer;
 use core::fmt::{Debug, Formatter, Result};
@@ -56,33 +55,33 @@ macro_rules! define_hasher {
             type BlockSize = U64;
         }
 
-        impl digest::Input for $name {
-            fn input<T: AsRef<[u8]>>(&mut self, data: T) {
+        impl digest::Update for $name {
+            fn update(&mut self, data: impl AsRef<[u8]>) {
                 let data = data.as_ref();
                 self.datalen += data.len();
                 let state = &mut self.state;
-                self.buffer.input(data, |b| state.input(b))
+                self.buffer.input_block(data, |b| state.input(b))
             }
         }
 
-        impl digest::FixedOutput for $name {
+        impl digest::FixedOutputDirty for $name {
             type OutputSize = $OutputBytes;
 
-            fn fixed_result(mut self) -> DGenericArray<u8, $OutputBytes> {
+            fn finalize_into_dirty(&mut self, out: &mut DGenericArray<u8, Self::OutputSize>) {
                 let state = &mut self.state;
                 let buffer = &mut self.buffer;
                 let len = self.datalen as u64 * 8;
                 if buffer.position() == 0 {
-                    buffer.len64_padding::<BigEndian, _>(len, |b| state.input(b));
+                    buffer.len64_padding_be(len, |b| state.input(b));
                 } else {
                     use block_buffer::block_padding::Iso7816;
                     state.input(buffer.pad_with::<Iso7816>().unwrap());
                     let mut last = BBGenericArray::default();
-                    BigEndian::write_u64(&mut last[56..], len);
+                    last[56..].copy_from_slice(&len.to_be_bytes());
                     state.input(&last);
                 }
                 let finalized = self.state.finalize();
-                DGenericArray::clone_from_slice(&finalized[(128 - $OutputBytes::to_usize())..])
+                out.as_mut_slice().copy_from_slice(&finalized[(128 - $OutputBytes::to_usize())..]);
             }
         }
 
