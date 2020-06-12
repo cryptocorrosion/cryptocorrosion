@@ -9,10 +9,9 @@ keywords = ["crypto", "skein", "hash", "digest"]
 categories = ["cryptography", "no-std"]
 
 [dependencies]
-block-buffer = "0.7"
-block-padding = "0.1.0"
-digest = "0.8"
+block-buffer = { version = "0.9", features = ["block-padding"] }
+digest = "0.9"
 threefish-cipher = "0.3"
 
 [dev-dependencies]
-digest = { version = "0.8", features = ["dev"] }
+digest = { version = "0.9", features = ["dev"] }

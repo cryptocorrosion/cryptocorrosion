@@ -9,9 +9,7 @@ repository = "https://github.com/cryptocorrosion/cryptocorrosion"
 keywords = ["crypto", "threefish", "gost", "block-cipher"]
 
 [dependencies]
-generic-array = "0.12"
-byteorder = { version = "1", default-features = false }
-block-cipher-trait = "0.6"
+block-cipher = "0.7"
 
 [dev-dependencies]
 hex-literal = "0.2"

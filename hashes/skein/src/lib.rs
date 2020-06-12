@@ -3,16 +3,14 @@
 #![no_std]
 
 extern crate block_buffer;
-extern crate block_padding;
 pub extern crate digest;
 extern crate threefish_cipher;
 
 pub use digest::generic_array::GenericArray;
 pub use digest::Digest;
 
-use block_buffer::byteorder::{ByteOrder, LE};
 use block_buffer::BlockBuffer;
-use block_padding::ZeroPadding;
+use block_buffer::block_padding::ZeroPadding;
 use digest::generic_array::typenum::{NonZero, PartialDiv, Unsigned, U128, U32, U64, U8};
 use digest::generic_array::ArrayLength;
 use threefish_cipher::{BlockCipher, Threefish1024, Threefish256, Threefish512};
@@ -176,9 +174,9 @@ macro_rules! define_hasher {
                     Block::default(),
                 );
                 let mut cfg = GenericArray::<u8, $state_bytes>::default();
-                LE::write_u64(&mut cfg[..8], SCHEMA_VER);
-                LE::write_u64(&mut cfg[8..16], N::to_u64() * 8);
-                LE::write_u64(&mut cfg[16..24], CFG_TREE_INFO_SEQUENTIAL);
+                cfg[..8].copy_from_slice(&SCHEMA_VER.to_le_bytes());
+                cfg[8..16].copy_from_slice(&(N::to_u64() * 8).to_le_bytes());
+                cfg[16..24].copy_from_slice(&CFG_TREE_INFO_SEQUENTIAL.to_le_bytes());
                 Self::process_block(&mut state, &cfg, CFG_STR_LEN);
 
                 // The chaining vars ctx->X are now initialized for the given hashBitLen.
@@ -200,11 +198,11 @@ macro_rules! define_hasher {
             type BlockSize = <$threefish as BlockCipher>::BlockSize;
         }
 
-        impl<N> digest::Input for $name<N>
+        impl<N> digest::Update for $name<N>
         where
             N: Unsigned + ArrayLength<u8> + NonZero + Default,
         {
-            fn input<T: AsRef<[u8]>>(&mut self, data: T) {
+            fn update(&mut self, data: impl AsRef<[u8]>) {
                 let buffer = &mut self.buffer;
                 let state = &mut self.state;
                 buffer.input_lazy(data.as_ref(), |block| {
@@ -213,32 +211,30 @@ macro_rules! define_hasher {
             }
         }
 
-        impl<N> digest::FixedOutput for $name<N>
+        impl<N> digest::FixedOutputDirty for $name<N>
         where
             N: Unsigned + ArrayLength<u8> + NonZero + Default,
         {
             type OutputSize = N;
 
-            fn fixed_result(mut self) -> GenericArray<u8, N> {
+            fn finalize_into_dirty(&mut self, output: &mut GenericArray<u8, Self::OutputSize>) {
                 self.state.t.1 |= T1_FLAG_FINAL;
                 let pos = self.buffer.position();
                 let final_block = self.buffer.pad_with::<ZeroPadding>().unwrap();
                 Self::process_block(&mut self.state, final_block, pos);
 
                 // run Threefish in "counter mode" to generate output
-                let mut output = GenericArray::default();
                 for (i, chunk) in output.chunks_mut($state_bits / 8).enumerate() {
                     let mut ctr = State::new(
                         T1_FLAG_FIRST | T1_BLK_TYPE_OUT | T1_FLAG_FINAL,
                         self.state.x,
                     );
                     let mut b = GenericArray::<u8, $state_bytes>::default();
-                    LE::write_u64(&mut b[..8], i as u64);
+                    b[..8].copy_from_slice(&(i as u64).to_le_bytes());
                     Self::process_block(&mut ctr, &b, 8);
                     let n = chunk.len();
                     chunk.copy_from_slice(&ctr.x.bytes()[..n]);
                 }
-                output
             }
         }
 
