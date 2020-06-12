@@ -1,20 +1,18 @@
 #![no_std]
 #![allow(non_upper_case_globals)]
-extern crate block_cipher_trait;
-extern crate byteorder;
-extern crate generic_array;
+extern crate block_cipher;
 #[cfg(test)]
 #[macro_use]
 extern crate hex_literal;
+use core::convert::TryInto;
 use core::ops::BitXor;
 
 mod consts;
 use consts::{C240, P_1024, P_256, P_512, R_1024, R_256, R_512};
 
-use block_cipher_trait::generic_array::typenum::{U1, U128, U32, U64};
-use block_cipher_trait::generic_array::GenericArray;
-pub use block_cipher_trait::BlockCipher;
-use byteorder::{ByteOrder, LE};
+use block_cipher::generic_array::typenum::{U1, U128, U32, U64};
+use block_cipher::generic_array::GenericArray;
+pub use block_cipher::{BlockCipher, NewBlockCipher};
 
 fn mix(r: u32, x: (u64, u64)) -> (u64, u64) {
     let y0 = x.0.wrapping_add(x.1);
@@ -30,13 +28,13 @@ fn inv_mix(r: u32, y: (u64, u64)) -> (u64, u64) {
 
 fn read_u64v_le(ns: &mut [u64], buf: &[u8]) {
     for (c, n) in buf.chunks_exact(8).zip(ns) {
-        *n = LE::read_u64(c);
+        *n = u64::from_le_bytes(c.try_into().unwrap());
     }
 }
 
 fn write_u64v_le(buf: &mut [u8], ns: &[u64]) {
     for (c, n) in buf.chunks_exact_mut(8).zip(ns) {
-        LE::write_u64(c, *n);
+        c.copy_from_slice(&n.to_le_bytes());
     }
 }
 
@@ -120,14 +118,17 @@ macro_rules! impl_threefish(
             }
         }
 
-        impl BlockCipher for $name {
-            type BlockSize = $block_size;
+        impl NewBlockCipher for $name {
             type KeySize = $block_size;
-            type ParBlocks = U1;
 
             fn new(key: &GenericArray<u8, $block_size>) -> $name {
                 Self::with_tweak(key, 0, 0)
             }
+        }
+
+        impl BlockCipher for $name {
+            type BlockSize = $block_size;
+            type ParBlocks = U1;
 
             fn encrypt_block(&self, block: &mut GenericArray<u8, Self::BlockSize>)
             {
@@ -208,8 +209,8 @@ mod test {
     //! tests from NIST submission
 
     use super::{Threefish1024, Threefish256, Threefish512};
-    use block_cipher_trait::generic_array::GenericArray;
-    use block_cipher_trait::BlockCipher;
+    use block_cipher::generic_array::GenericArray;
+    use block_cipher::{BlockCipher, NewBlockCipher};
 
     #[test]
     fn test_256() {
