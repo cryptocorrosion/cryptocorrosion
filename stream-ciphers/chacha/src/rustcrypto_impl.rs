@@ -1,8 +1,8 @@
-use byteorder::{ByteOrder, LE};
-use core::cmp;
 use crate::guts::generic_array::typenum::{Unsigned, U10, U12, U24, U32, U4, U6, U8};
 use crate::guts::generic_array::{ArrayLength, GenericArray};
 use crate::guts::{ChaCha, Machine, BLOCK, BLOCK64, BUFSZ};
+use core::cmp;
+use core::convert::TryInto;
 pub use stream_cipher;
 use stream_cipher::{LoopError, NewStreamCipher, SyncStreamCipher, SyncStreamCipherSeek};
 
@@ -241,12 +241,12 @@ dispatch_light128!(m, Mach, {
         let ctr_nonce = [
             0,
             if nonce.len() == 12 {
-                LE::read_u32(&nonce[0..4])
+                u32::from_le_bytes(nonce[0..4].try_into().unwrap())
             } else {
                 0
             },
-            LE::read_u32(&nonce[nonce.len() - 8..nonce.len() - 4]),
-            LE::read_u32(&nonce[nonce.len() - 4..]),
+            u32::from_le_bytes(nonce[nonce.len() - 8..nonce.len() - 4].try_into().unwrap()),
+            u32::from_le_bytes(nonce[nonce.len() - 4..].try_into().unwrap()),
         ];
         let key0: Mach::u32x4 = m.read_le(&key[..16]);
         let key1: Mach::u32x4 = m.read_le(&key[16..]);
@@ -276,8 +276,8 @@ dispatch_light128!(m, Mach, {
         let ctr_nonce1 = [
             0,
             0,
-            LE::read_u32(&nonce[16..20]),
-            LE::read_u32(&nonce[20..24]),
+            u32::from_le_bytes(nonce[16..20].try_into().unwrap()),
+            u32::from_le_bytes(nonce[20..24].try_into().unwrap()),
         ];
         state.b = x.a;
         state.c = x.d;
