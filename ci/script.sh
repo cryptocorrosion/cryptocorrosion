@@ -27,10 +27,24 @@ portable_only() {
     cross test --target $TARGET --release -p c2-chacha -p ppv-lite86
 }
 
+older_msrv_crates() {
+    cross build --target $TARGET -p ppv-lite86
+    cross build --target $TARGET --release -p ppv-lite86
+
+    if [ ! -z $DISABLE_TESTS ]; then
+        return
+    fi
+
+    cross test --target $TARGET -p ppv-lite86
+    cross test --target $TARGET --release -p ppv-lite86
+}
+
 # we don't run the "test phase" when doing deploys
 if [ -z $TRAVIS_TAG ]; then
     if [ -z $PORTABLE_ONLY ]; then
         main
+    elif [ -z $OLDER_MSRV_CRATES ]; then
+        older_msrv_crates
     else
         portable_only
     fi
