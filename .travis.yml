@@ -75,6 +75,8 @@ matrix:
       rust: nightly
     - env: TARGET=x86_64-unknown-linux-gnu
       rust: stable
+    - env: TARGET=x86_64-unknown-linux-gnu OLDER_MSRV_CRATES=1 DISABLE_TESTS=1
+      rust: 1.32.0
     - env: TARGET=x86_64-unknown-linux-gnu
       rust: 1.41.0
 
