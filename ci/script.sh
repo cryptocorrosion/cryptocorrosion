@@ -41,11 +41,11 @@ older_msrv_crates() {
 
 # we don't run the "test phase" when doing deploys
 if [ -z $TRAVIS_TAG ]; then
-    if [ -z $PORTABLE_ONLY ]; then
-        main
-    elif [ -z $OLDER_MSRV_CRATES ]; then
+    if [ -n $PORTABLE_ONLY ]; then
+        portable_only
+    elif [ -n $OLDER_MSRV_CRATES ]; then
         older_msrv_crates
     else
-        portable_only
+        main
     fi
 fi
