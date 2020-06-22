@@ -81,7 +81,7 @@ macro_rules! define_hasher {
                     state.input(&last);
                 }
                 let finalized = self.state.finalize();
-                out.as_mut_slice().copy_from_slice(&finalized[(128 - $OutputBytes::to_usize())..]);
+                out.copy_from_slice(&finalized[(128 - $OutputBytes::to_usize())..]);
             }
         }
 
