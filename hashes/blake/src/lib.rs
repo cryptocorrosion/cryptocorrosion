@@ -256,7 +256,7 @@ macro_rules! define_hasher {
                 buffer.input_block(&msglen, |block| compressor.put_block(block, t));
                 debug_assert_eq!(buffer.position(), 0);
 
-                out.as_mut_slice().copy_from_slice(&compressor.finalize()[..$Bytes::to_usize()]);
+                out.copy_from_slice(&compressor.finalize()[..$Bytes::to_usize()]);
             }
         }
 
