@@ -4,6 +4,7 @@ use core::ops::*;
 use crate::soft::{x2, x4};
 use crate::types::*;
 
+#[repr(C)]
 #[derive(Clone, Copy)]
 pub union vec128_storage {
     d: [u32; 4],
