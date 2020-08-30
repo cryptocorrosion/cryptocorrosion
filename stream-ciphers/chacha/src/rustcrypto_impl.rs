@@ -4,7 +4,9 @@ use crate::guts::{ChaCha, Machine, BLOCK, BLOCK64, BUFSZ};
 use core::cmp;
 use core::convert::TryInto;
 pub use stream_cipher;
-use stream_cipher::{LoopError, NewStreamCipher, SyncStreamCipher, SyncStreamCipherSeek};
+use stream_cipher::{
+    LoopError, NewStreamCipher, OverflowError, SeekNum, SyncStreamCipher, SyncStreamCipherSeek,
+};
 
 const BIG_LEN: u64 = 0;
 const SMALL_LEN: u64 = 1 << 32;
@@ -206,12 +208,14 @@ impl<Rounds: Unsigned + Default> NewStreamCipher for ChaChaAny<U24, Rounds, X> {
 
 impl<NonceSize: Unsigned, Rounds, IsX> SyncStreamCipherSeek for ChaChaAny<NonceSize, Rounds, IsX> {
     #[inline]
-    fn current_pos(&self) -> u64 {
+    fn try_current_pos<T: SeekNum>(&self) -> Result<T, OverflowError> {
         unimplemented!()
     }
     #[inline(always)]
-    fn seek(&mut self, ct: u64) {
-        Self::seek(self, ct)
+    fn try_seek<T: SeekNum>(&mut self, pos: T) -> Result<(), LoopError> {
+        pos.try_into()
+            .map_err(|_| LoopError)
+            .map(|ct| Self::seek(self, ct))
     }
 }
 
