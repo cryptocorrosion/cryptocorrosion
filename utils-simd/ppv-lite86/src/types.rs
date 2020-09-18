@@ -221,6 +221,7 @@ mod types {
 }
 pub use self::types::*;
 
+#[allow(non_camel_case_types)]
 pub trait Machine: Sized + Copy {
     type u32x4: u32x4<Self>;
     type u64x2: u64x2<Self>;

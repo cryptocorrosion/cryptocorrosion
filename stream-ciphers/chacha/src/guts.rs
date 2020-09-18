@@ -255,7 +255,7 @@ dispatch!(m, Mach, {
     }
 });
 
-/// Refill the buffer from a single-block round, updating the block count.
+// Refill the buffer from a single-block round, updating the block count.
 dispatch_light128!(m, Mach, {
     fn refill_narrow(state: &mut ChaCha, drounds: u32, out: &mut [u8; BLOCK]) {
         let x = refill_narrow_rounds(state, drounds);
@@ -270,8 +270,8 @@ dispatch_light128!(m, Mach, {
     }
 });
 
-/// Single-block, rounds-only; shared by try_apply_keystream for tails shorter than BUFSZ
-/// and XChaCha's setup step.
+// Single-block, rounds-only; shared by try_apply_keystream for tails shorter than BUFSZ
+// and XChaCha's setup step.
 dispatch!(m, Mach, {
     fn refill_narrow_rounds(state: &mut ChaCha, drounds: u32) -> State<vec128_storage> {
         let k: Mach::u32x4 = m.vec([0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574]);
