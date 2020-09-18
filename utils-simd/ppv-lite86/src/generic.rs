@@ -61,12 +61,6 @@ impl vec256_storage {
         self.v128
     }
 }
-impl From<[u64; 4]> for vec256_storage {
-    #[inline]
-    fn from(q: [u64; 4]) -> Self {
-        Self { v128: [[0, 1].into(), [2, 3].into()] }
-    }
-}
 impl From<vec256_storage> for [u64; 4] {
     #[inline]
     fn from(q: vec256_storage) -> Self {
