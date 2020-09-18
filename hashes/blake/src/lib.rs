@@ -8,7 +8,6 @@ use std as core;
 
 extern crate block_buffer;
 pub extern crate digest;
-#[macro_use]
 pub extern crate simd;
 
 mod consts;
