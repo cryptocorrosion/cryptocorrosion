@@ -1,8 +1,8 @@
 #![allow(non_camel_case_types)]
 
-use core::ops::*;
 use crate::soft::{x2, x4};
 use crate::types::*;
+use core::ops::*;
 
 #[repr(C)]
 #[derive(Clone, Copy)]

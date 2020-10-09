@@ -175,7 +175,8 @@ unsafe fn transpose_a(i: X4) -> X4 {
         _mm_unpackhi_epi16(i.0, i.1),
         _mm_unpacklo_epi16(i.2, i.3),
         _mm_unpackhi_epi16(i.2, i.3),
-    ).map(|x| _mm_shuffle_epi32(x, 0b1101_1000));
+    )
+    .map(|x| _mm_shuffle_epi32(x, 0b1101_1000));
     X4(
         _mm_unpacklo_epi32(z.0, z.2),
         _mm_unpacklo_epi32(z.1, z.3),
@@ -367,7 +368,8 @@ unsafe fn transpose_inv(i: X8) -> X8 {
         _mm_unpackhi_epi64(i.4, i.5),
         _mm_unpacklo_epi64(i.6, i.7),
         _mm_unpackhi_epi64(i.6, i.7),
-    ).map(|x| {
+    )
+    .map(|x| {
         _mm_shuffle_epi8(
             x,
             _mm_set_epi64x(0x0f07_0b03_0e06_0a02, 0x0d05_0901_0c04_0800),
@@ -382,7 +384,8 @@ unsafe fn transpose_inv(i: X8) -> X8 {
         _mm_unpacklo_epi16(i.5, i.7),
         _mm_unpackhi_epi16(i.4, i.6),
         _mm_unpackhi_epi16(i.5, i.7),
-    ).map(|x| _mm_shuffle_epi32(x, 0b1101_1000));
+    )
+    .map(|x| _mm_shuffle_epi32(x, 0b1101_1000));
     X8(
         _mm_unpacklo_epi32(i.0, i.4),
         _mm_unpacklo_epi32(i.2, i.6),
@@ -446,7 +449,8 @@ unsafe fn rounds_q(mut x: X8) -> X8 {
         _mm_set_epi64x(0x080b_0e01_0407_0a0d, 0x0003_0609_0c0f_0205),
         _mm_set_epi64x(0x090c_0f02_0508_0b0e, 0x0104_070a_0d00_0306),
         _mm_set_epi64x(0x0e01_0407_0a0d_0003, 0x0609_0c0f_0205_080b),
-    ).shuffle((1, 3, 5, 7, 0, 2, 4, 6));
+    )
+    .shuffle((1, 3, 5, 7, 0, 2, 4, 6));
     let f = _mm_set1_epi64x(0xffff_ffff_ffff_ffffu64 as i64);
     for q in const_q.chunks_exact(2) {
         // 2 rounds at a time so we can flip-flop between register sets

@@ -15,10 +15,10 @@ mod consts;
 
 pub use digest::Digest;
 
+use crate::compressor::Compressor;
 use block_buffer::generic_array::GenericArray as BBGenericArray;
 use block_buffer::BlockBuffer;
 use core::fmt::{Debug, Formatter, Result};
-use crate::compressor::Compressor;
 use digest::generic_array::typenum::{Unsigned, U28, U32, U48, U64};
 use digest::generic_array::GenericArray as DGenericArray;
 

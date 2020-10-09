@@ -166,28 +166,23 @@ macro_rules! impl_bitops128 {
 
 macro_rules! rotr_32_s3 {
     ($name:ident, $k0:expr, $k1:expr) => {
-    #[inline(always)]
-    fn $name(self) -> Self {
-        Self::new(unsafe {
-                _mm_shuffle_epi8(
-                    self.x,
-                    _mm_set_epi64x($k0, $k1),
-                )
-            })
+        #[inline(always)]
+        fn $name(self) -> Self {
+            Self::new(unsafe { _mm_shuffle_epi8(self.x, _mm_set_epi64x($k0, $k1)) })
         }
     };
 }
 macro_rules! rotr_32 {
     ($name:ident, $i:expr) => {
-    #[inline(always)]
-    fn $name(self) -> Self {
-        Self::new(unsafe {
-            _mm_or_si128(
-                _mm_srli_epi32(self.x, $i as i32),
-                _mm_slli_epi32(self.x, 32 - $i as i32),
-            )
-        })
-    }
+        #[inline(always)]
+        fn $name(self) -> Self {
+            Self::new(unsafe {
+                _mm_or_si128(
+                    _mm_srli_epi32(self.x, $i as i32),
+                    _mm_slli_epi32(self.x, 32 - $i as i32),
+                )
+            })
+        }
     };
 }
 impl<S4: Copy, NI: Copy> RotateEachWord32 for u32x4_sse2<YesS3, S4, NI> {
@@ -228,28 +223,23 @@ impl<S4: Copy, NI: Copy> RotateEachWord32 for u32x4_sse2<NoS3, S4, NI> {
 
 macro_rules! rotr_64_s3 {
     ($name:ident, $k0:expr, $k1:expr) => {
-    #[inline(always)]
-    fn $name(self) -> Self {
-        Self::new(unsafe {
-                _mm_shuffle_epi8(
-                    self.x,
-                    _mm_set_epi64x($k0, $k1),
-                )
-            })
+        #[inline(always)]
+        fn $name(self) -> Self {
+            Self::new(unsafe { _mm_shuffle_epi8(self.x, _mm_set_epi64x($k0, $k1)) })
         }
     };
 }
 macro_rules! rotr_64 {
     ($name:ident, $i:expr) => {
-    #[inline(always)]
-    fn $name(self) -> Self {
-        Self::new(unsafe {
-            _mm_or_si128(
-                _mm_srli_epi64(self.x, $i as i32),
-                _mm_slli_epi64(self.x, 64 - $i as i32),
-            )
-        })
-    }
+        #[inline(always)]
+        fn $name(self) -> Self {
+            Self::new(unsafe {
+                _mm_or_si128(
+                    _mm_srli_epi64(self.x, $i as i32),
+                    _mm_slli_epi64(self.x, 64 - $i as i32),
+                )
+            })
+        }
     };
 }
 impl<S4: Copy, NI: Copy> RotateEachWord32 for u64x2_sse2<YesS3, S4, NI> {
@@ -296,15 +286,15 @@ impl<S3: Copy, S4: Copy, NI: Copy> RotateEachWord64 for u64x2_sse2<S3, S4, NI> {
 
 macro_rules! rotr_128 {
     ($name:ident, $i:expr) => {
-    #[inline(always)]
-    fn $name(self) -> Self {
-        Self::new(unsafe {
-            _mm_or_si128(
-                _mm_srli_si128(self.x, $i as i32),
-                _mm_slli_si128(self.x, 128 - $i as i32),
-            )
-        })
-    }
+        #[inline(always)]
+        fn $name(self) -> Self {
+            Self::new(unsafe {
+                _mm_or_si128(
+                    _mm_srli_si128(self.x, $i as i32),
+                    _mm_slli_si128(self.x, 128 - $i as i32),
+                )
+            })
+        }
     };
 }
 // TODO: completely unoptimized
@@ -1493,19 +1483,13 @@ pub mod avx2 {
     impl<NI> ArithOps for u32x4x4_avx2<NI> where NI: Copy {}
     macro_rules! shuf_lane_bytes {
         ($name:ident, $k0:expr, $k1:expr) => {
-        #[inline(always)]
-        fn $name(self) -> Self {
-            Self::new(unsafe {
-                [
-                    _mm256_shuffle_epi8(
-                        self.x[0],
-                        _mm256_set_epi64x($k0, $k1, $k0, $k1),
-                    ),
-                    _mm256_shuffle_epi8(
-                        self.x[1],
-                        _mm256_set_epi64x($k0, $k1, $k0, $k1),
-                    )
-                ]
+            #[inline(always)]
+            fn $name(self) -> Self {
+                Self::new(unsafe {
+                    [
+                        _mm256_shuffle_epi8(self.x[0], _mm256_set_epi64x($k0, $k1, $k0, $k1)),
+                        _mm256_shuffle_epi8(self.x[1], _mm256_set_epi64x($k0, $k1, $k0, $k1)),
+                    ]
                 })
             }
         };
@@ -1523,7 +1507,7 @@ pub mod avx2 {
                         _mm256_or_si256(
                             _mm256_srli_epi32(self.x[1], $i as i32),
                             _mm256_slli_epi32(self.x[1], 32 - $i as i32),
-                        )
+                        ),
                     ]
                 })
             }
