@@ -47,7 +47,7 @@ impl BitXor for X4 {
 impl Map2 for (X4, X4) {
     type Output = X4;
     #[inline(always)]
-    fn map<F>(self: Self, mut f: F) -> Self::Output
+    fn map<F>(self, mut f: F) -> Self::Output
     where
         F: FnMut(__m128i, __m128i) -> __m128i,
     {
@@ -115,7 +115,7 @@ impl BitXor for X8 {
 impl Map2 for (X8, X8) {
     type Output = X8;
     #[inline(always)]
-    fn map<F>(self: Self, mut f: F) -> Self::Output
+    fn map<F>(self, mut f: F) -> Self::Output
     where
         F: FnMut(__m128i, __m128i) -> __m128i,
     {
