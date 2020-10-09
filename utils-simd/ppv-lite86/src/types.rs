@@ -111,7 +111,7 @@ mod types {
         + MultiLane<[u32; 4]>
         + Into<vec128_storage>
     {
-}
+    }
     pub trait u64x2<M: Machine>:
         BitOps64
         + Store<vec128_storage>
@@ -120,11 +120,11 @@ mod types {
         + MultiLane<[u64; 2]>
         + Into<vec128_storage>
     {
-}
+    }
     pub trait u128x1<M: Machine>:
         BitOps128 + Store<vec128_storage> + Swap64 + MultiLane<[u128; 1]> + Into<vec128_storage>
     {
-}
+    }
 
     pub trait u32x4x2<M: Machine>:
         BitOps32
@@ -134,7 +134,7 @@ mod types {
         + ArithOps
         + Into<vec256_storage>
     {
-}
+    }
     pub trait u64x2x2<M: Machine>:
         BitOps64
         + Store<vec256_storage>
@@ -144,7 +144,7 @@ mod types {
         + StoreBytes
         + Into<vec256_storage>
     {
-}
+    }
     pub trait u64x4<M: Machine>:
         BitOps64
         + Store<vec256_storage>
@@ -155,7 +155,7 @@ mod types {
         + StoreBytes
         + Into<vec256_storage>
     {
-}
+    }
     pub trait u128x2<M: Machine>:
         BitOps128
         + Store<vec256_storage>
@@ -164,7 +164,7 @@ mod types {
         + Swap64
         + Into<vec256_storage>
     {
-}
+    }
 
     pub trait u32x4x4<M: Machine>:
         BitOps32
@@ -175,7 +175,7 @@ mod types {
         + LaneWords4
         + Into<vec512_storage>
     {
-}
+    }
     pub trait u64x2x4<M: Machine>:
         BitOps64
         + Store<vec512_storage>
@@ -184,7 +184,7 @@ mod types {
         + ArithOps
         + Into<vec512_storage>
     {
-}
+    }
     // TODO: Words4
     pub trait u128x4<M: Machine>:
         BitOps128
@@ -194,7 +194,7 @@ mod types {
         + Swap64
         + Into<vec512_storage>
     {
-}
+    }
 
     /// A vector composed of multiple 128-bit lanes.
     pub trait MultiLane<Lanes> {

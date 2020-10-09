@@ -1,7 +1,7 @@
 // crate minimums: sse2, x86_64
 
-use core::arch::x86_64::{__m128i, __m256i};
 use crate::types::*;
+use core::arch::x86_64::{__m128i, __m256i};
 
 mod sse2;
 

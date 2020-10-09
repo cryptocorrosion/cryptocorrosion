@@ -70,7 +70,6 @@ fn round64<M: Machine>(
     (a, b, c, d)
 }
 
-
 #[inline(always)]
 fn diagonalize<X4: Words4>((a, b, c, d): (X4, X4, X4, X4)) -> (X4, X4, X4, X4) {
     // Since b has the critical data dependency, avoid rotating b to hide latency.

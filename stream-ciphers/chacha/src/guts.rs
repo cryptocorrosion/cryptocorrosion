@@ -178,7 +178,11 @@ impl ChaCha {
     pub fn stream32_eq(&self, rhs: &Self) -> bool {
         let self_d: [u32; 4] = self.d.into();
         let rhs_d: [u32; 4] = rhs.d.into();
-        self.b == rhs.b && self.c == rhs.c && self_d[3] == rhs_d[3] && self_d[2] == rhs_d[2] && self_d[1] == rhs_d[1]
+        self.b == rhs.b
+            && self.c == rhs.c
+            && self_d[3] == rhs_d[3]
+            && self_d[2] == rhs_d[2]
+            && self_d[1] == rhs_d[1]
     }
 
     /// Return whether rhs represents the same stream, irrespective of current 64-bit position.
