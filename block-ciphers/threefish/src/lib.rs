@@ -1,6 +1,6 @@
 #![no_std]
 #![allow(non_upper_case_globals)]
-extern crate block_cipher;
+extern crate cipher;
 #[cfg(test)]
 #[macro_use]
 extern crate hex_literal;
@@ -10,9 +10,9 @@ use core::ops::BitXor;
 mod consts;
 use consts::{C240, P_1024, P_256, P_512, R_1024, R_256, R_512};
 
-use block_cipher::generic_array::typenum::{U1, U128, U32, U64};
-use block_cipher::generic_array::GenericArray;
-pub use block_cipher::{BlockCipher, NewBlockCipher};
+use cipher::generic_array::typenum::{U1, U128, U32, U64};
+use cipher::generic_array::GenericArray;
+pub use cipher::{BlockCipher, NewBlockCipher};
 
 fn mix(r: u32, x: (u64, u64)) -> (u64, u64) {
     let y0 = x.0.wrapping_add(x.1);
@@ -209,8 +209,8 @@ mod test {
     //! tests from NIST submission
 
     use super::{Threefish1024, Threefish256, Threefish512};
-    use block_cipher::generic_array::GenericArray;
-    use block_cipher::{BlockCipher, NewBlockCipher};
+    use cipher::generic_array::GenericArray;
+    use cipher::{BlockCipher, NewBlockCipher};
 
     #[test]
     fn test_256() {

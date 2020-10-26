@@ -1,5 +1,5 @@
 #[cfg(feature = "rustcrypto_api")]
-pub use stream_cipher::generic_array;
+pub use cipher::generic_array;
 
 pub use ppv_lite86::Machine;
 use ppv_lite86::{vec128_storage, ArithOps, BitOps32, LaneWords4, MultiLane, StoreBytes, Vec4};

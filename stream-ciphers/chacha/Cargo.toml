@@ -13,7 +13,7 @@ documentation = "https://docs.rs/c2-chacha"
 
 [dependencies]
 ppv-lite86 = { package = "ppv-lite86", version = "0.2.8", default-features = false }
-stream-cipher = { version = "0.7", optional = true }
+cipher = { version = "0.2", optional = true }
 
 [dev-dependencies]
 hex-literal = "0.2"
@@ -21,7 +21,7 @@ hex-literal = "0.2"
 [features]
 default = ["std", "rustcrypto_api"]
 std = ["ppv-lite86/std"]
-rustcrypto_api = ["stream-cipher"]
+rustcrypto_api = ["cipher"]
 no_simd = ["ppv-lite86/no_simd"]
 simd = [] # deprecated
 
