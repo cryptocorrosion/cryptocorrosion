@@ -3,8 +3,8 @@ use crate::guts::generic_array::{ArrayLength, GenericArray};
 use crate::guts::{ChaCha, Machine, BLOCK, BLOCK64, BUFSZ};
 use core::cmp;
 use core::convert::TryInto;
-pub use stream_cipher;
-use stream_cipher::{
+pub use cipher::stream as stream_cipher;
+use cipher::stream::{
     LoopError, NewStreamCipher, OverflowError, SeekNum, SyncStreamCipher, SyncStreamCipherSeek,
 };
 
