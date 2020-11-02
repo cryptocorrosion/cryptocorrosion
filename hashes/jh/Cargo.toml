@@ -1,6 +1,6 @@
 [package]
 name = "jh-x86_64"
-version = "0.2.2"
+version = "0.3.0"
 authors = ["The CryptoCorrosion Contributors"]
 license = "MIT/Apache-2.0"
 description = "Portable JH with optimizations for x86-64 cpus"

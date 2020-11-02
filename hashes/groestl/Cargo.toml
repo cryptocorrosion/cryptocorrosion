@@ -1,6 +1,6 @@
 [package]
 name = "groestl-aesni"
-version = "0.2.2"
+version = "0.3.0"
 authors = ["The CryptoCorrosion Contributors"]
 license = "MIT/Apache-2.0"
 description = "Hardware-accelerated Groestl hash for x86-64 systems with AES extensions"
