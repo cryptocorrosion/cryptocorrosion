@@ -4,7 +4,7 @@ CRATE_TAGS=$(git tag | sed 's/-[^-]*$//' | uniq)
 CARGOS=$(echo */*/Cargo.toml)
 
 for TAG in $CRATE_TAGS; do
-	LATEST_TAG=$(git tag | grep $TAG | tail -n1)
+	LATEST_TAG=$(git tag | grep $TAG | sort -V | tail -n1)
 	FOUND_CARGO=
 	for CARGO in $CARGOS; do
 		# fixups for tag names that don't match crate names
