@@ -292,12 +292,18 @@ dispatch_light128!(m, Mach, {
 
 /// IETF RFC 7539 ChaCha. Unsuitable for messages longer than 256 GiB.
 pub type Ietf = ChaChaAny<U12, U10, O>;
-/// ChaCha20, as used in several standards; from Bernstein's original publication.
-pub type ChaCha20 = ChaChaAny<U8, U10, O>;
-/// Similar to ChaCha20, but with fewer rounds for higher performance.
-pub type ChaCha12 = ChaChaAny<U8, U6, O>;
 /// Similar to ChaCha20, but with fewer rounds for higher performance.
 pub type ChaCha8 = ChaChaAny<U8, U4, O>;
+/// Similar to ChaCha20, but with fewer rounds for higher performance.
+pub type ChaCha12 = ChaChaAny<U8, U6, O>;
+/// ChaCha20, as used in several standards; from Bernstein's original publication.
+pub type ChaCha20 = ChaChaAny<U8, U10, O>;
+/// Constructed analogously to XChaCha20, but with fewer rounds for higher performance;
+/// mixes during initialization to support both a long nonce and a full-length (64-bit) block counter.
+pub type XChaCha8 = ChaChaAny<U24, U4, X>;
+/// Constructed analogously to XChaCha20, but with fewer rounds for higher performance;
+/// mixes during initialization to support both a long nonce and a full-length (64-bit) block counter.
+pub type XChaCha12 = ChaChaAny<U24, U6, X>;
 /// Constructed analogously to XSalsa20; mixes during initialization to support both a long nonce
 /// and a full-length (64-bit) block counter.
 pub type XChaCha20 = ChaChaAny<U24, U10, X>;

@@ -42,4 +42,4 @@ pub mod guts;
 #[cfg(feature = "rustcrypto_api")]
 mod rustcrypto_impl;
 #[cfg(feature = "rustcrypto_api")]
-pub use self::rustcrypto_impl::{stream_cipher, ChaCha12, ChaCha20, ChaCha8, Ietf, XChaCha20};
+pub use self::rustcrypto_impl::{stream_cipher, Ietf, ChaCha8, ChaCha12, ChaCha20, XChaCha8, XChaCha12, XChaCha20};
