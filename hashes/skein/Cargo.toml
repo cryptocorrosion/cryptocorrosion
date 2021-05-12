@@ -1,6 +1,6 @@
 [package]
 name = "skein-hash"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["The CryptoCorrosion Contributors"]
 license = "MIT/Apache-2.0"
 description = "Skein hash functions"
