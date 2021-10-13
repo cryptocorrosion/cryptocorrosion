@@ -880,6 +880,15 @@ pub type u64x2x4_sse2<S3, S4, NI> = x4<u64x2_sse2<S3, S4, NI>>;
 #[allow(non_camel_case_types)]
 pub type u128x4_sse2<S3, S4, NI> = x4<u128x1_sse2<S3, S4, NI>>;
 
+impl<S3, S4, NI> Vector<[u32; 16]> for u32x4x4_sse2<S3, S4, NI> {
+    #[inline(always)]
+    fn to_scalars(self) -> [u32; 16] {
+        unsafe {
+            core::mem::transmute(self)
+        }
+    }
+}
+
 impl<S3: Copy, S4: Copy, NI: Copy> u32x4x2<Machine86<S3, S4, NI>> for u32x4x2_sse2<S3, S4, NI>
 where
     u32x4_sse2<S3, S4, NI>: RotateEachWord32 + BSwap,
@@ -983,6 +992,8 @@ where
     Machine86<S3, S4, NI>: Machine,
     u32x4x4_sse2<S3, S4, NI>: MultiLane<[<Machine86<S3, S4, NI> as Machine>::u32x4; 4]>,
     u32x4x4_sse2<S3, S4, NI>: Vec4<<Machine86<S3, S4, NI> as Machine>::u32x4>,
+    u32x4x4_sse2<S3, S4, NI>: Vec4Ext<<Machine86<S3, S4, NI> as Machine>::u32x4>,
+    u32x4x4_sse2<S3, S4, NI>: Vector<[u32; 16]>,
 {
 }
 impl<S3: Copy, S4: Copy, NI: Copy> u64x2x4<Machine86<S3, S4, NI>> for u64x2x4_sse2<S3, S4, NI>
@@ -1010,6 +1021,8 @@ where
     Avx2Machine<NI>: Machine,
     u32x4x4_sse2<YesS3, YesS4, NI>: MultiLane<[<Avx2Machine<NI> as Machine>::u32x4; 4]>,
     u32x4x4_sse2<YesS3, YesS4, NI>: Vec4<<Avx2Machine<NI> as Machine>::u32x4>,
+    u32x4x4_sse2<YesS3, YesS4, NI>: Vec4Ext<<Avx2Machine<NI> as Machine>::u32x4>,
+    u32x4x4_sse2<YesS3, YesS4, NI>: Vector<[u32; 16]>,
 {
 }
 impl<NI: Copy> u64x2x4<Avx2Machine<NI>> for u64x2x4_sse2<YesS3, YesS4, NI>
@@ -1448,6 +1461,46 @@ pub mod avx2 {
                     _ => panic!(),
                 }
             })
+        }
+    }
+    impl<NI> Vec4Ext<u32x4_sse2<YesS3, YesS4, NI>> for u32x4x4_avx2<NI> {
+        #[inline(always)]
+        fn transpose4(a: Self, b: Self, c: Self, d: Self) -> (Self, Self, Self, Self) {
+            /*
+             * a00:a01 a10:a11
+             * b00:b01 b10:b11
+             * c00:c01 c10:c11
+             * d00:d01 d10:d11
+             *       =>
+             * a00:b00 c00:d00
+             * a01:b01 c01:d01
+             * a10:b10 c10:d10
+             * a11:b11 c11:d11
+             */
+            unsafe {
+                let ab00 = _mm256_permute2x128_si256::<0x20>(a.x[0], b.x[0]);
+                let ab01 = _mm256_permute2x128_si256::<0x31>(a.x[0], b.x[0]);
+                let ab10 = _mm256_permute2x128_si256::<0x20>(a.x[1], b.x[1]);
+                let ab11 = _mm256_permute2x128_si256::<0x31>(a.x[1], b.x[1]);
+                let cd00 = _mm256_permute2x128_si256::<0x20>(c.x[0], d.x[0]);
+                let cd01 = _mm256_permute2x128_si256::<0x31>(c.x[0], d.x[0]);
+                let cd10 = _mm256_permute2x128_si256::<0x20>(c.x[1], d.x[1]);
+                let cd11 = _mm256_permute2x128_si256::<0x31>(c.x[1], d.x[1]);
+                (
+                    Self { x: [ab00, cd00], ni: a.ni },
+                    Self { x: [ab01, cd01], ni: a.ni },
+                    Self { x: [ab10, cd10], ni: a.ni },
+                    Self { x: [ab11, cd11], ni: a.ni },
+                )
+            }
+        }
+    }
+    impl<NI> Vector<[u32; 16]> for u32x4x4_avx2<NI> {
+        #[inline(always)]
+        fn to_scalars(self) -> [u32; 16] {
+            unsafe {
+                core::mem::transmute(self)
+            }
         }
     }
     impl<NI> LaneWords4 for u32x4x4_avx2<NI> {

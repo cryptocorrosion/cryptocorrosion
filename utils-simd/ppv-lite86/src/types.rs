@@ -71,6 +71,15 @@ pub trait Vec4<W> {
     fn extract(self, i: u32) -> W;
     fn insert(self, w: W, i: u32) -> Self;
 }
+/// Vec4 functions which may not be implemented yet for all Vec4 types.
+/// NOTE: functions in this trait may be moved to Vec4 in any patch release. To avoid breakage,
+/// import Vec4Ext only together with Vec4, and don't qualify its methods.
+pub trait Vec4Ext<W> {
+    fn transpose4(a: Self, b: Self, c: Self, d: Self) -> (Self, Self, Self, Self) where Self: Sized;
+}
+pub trait Vector<T> {
+    fn to_scalars(self) -> T;
+}
 
 // TODO: multiples of 4 should inherit this
 /// A vector composed of four words; depending on their size, operations may cross lanes.
@@ -169,6 +178,8 @@ pub trait u32x4x4<M: Machine>:
     BitOps32
     + Store<vec512_storage>
     + Vec4<M::u32x4>
+    + Vec4Ext<M::u32x4>
+    + Vector<[u32; 16]>
     + MultiLane<[M::u32x4; 4]>
     + ArithOps
     + LaneWords4
