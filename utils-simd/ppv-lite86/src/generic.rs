@@ -615,6 +615,22 @@ pub type u32x4x4_generic = x4<u32x4_generic>;
 pub type u64x2x4_generic = x4<u64x2_generic>;
 pub type u128x4_generic = x4<u128x1_generic>;
 
+impl Vector<[u32; 16]> for u32x4x4_generic {
+    fn to_scalars(self) -> [u32; 16] {
+        let [a, b, c, d] = self.0;
+        let a = a.0;
+        let b = b.0;
+        let c = c.0;
+        let d = d.0;
+        [
+            a[0], b[0], c[0], d[0],
+            a[1], b[1], c[1], d[1],
+            a[2], b[2], c[2], d[2],
+            a[3], b[3], c[3], d[3],
+        ]
+    }
+}
+
 impl MultiLane<[u32; 4]> for u32x4_generic {
     #[inline(always)]
     fn to_lanes(self) -> [u32; 4] {
