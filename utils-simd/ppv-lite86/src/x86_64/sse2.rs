@@ -1478,14 +1478,14 @@ pub mod avx2 {
              * a11:b11 c11:d11
              */
             unsafe {
-                let ab00 = _mm256_permute2x128_si256::<0x20>(a.x[0], b.x[0]);
-                let ab01 = _mm256_permute2x128_si256::<0x31>(a.x[0], b.x[0]);
-                let ab10 = _mm256_permute2x128_si256::<0x20>(a.x[1], b.x[1]);
-                let ab11 = _mm256_permute2x128_si256::<0x31>(a.x[1], b.x[1]);
-                let cd00 = _mm256_permute2x128_si256::<0x20>(c.x[0], d.x[0]);
-                let cd01 = _mm256_permute2x128_si256::<0x31>(c.x[0], d.x[0]);
-                let cd10 = _mm256_permute2x128_si256::<0x20>(c.x[1], d.x[1]);
-                let cd11 = _mm256_permute2x128_si256::<0x31>(c.x[1], d.x[1]);
+                let ab00 = _mm256_permute2x128_si256(a.x[0], b.x[0], 0x20);
+                let ab01 = _mm256_permute2x128_si256(a.x[0], b.x[0], 0x31);
+                let ab10 = _mm256_permute2x128_si256(a.x[1], b.x[1], 0x20);
+                let ab11 = _mm256_permute2x128_si256(a.x[1], b.x[1], 0x31);
+                let cd00 = _mm256_permute2x128_si256(c.x[0], d.x[0], 0x20);
+                let cd01 = _mm256_permute2x128_si256(c.x[0], d.x[0], 0x31);
+                let cd10 = _mm256_permute2x128_si256(c.x[1], d.x[1], 0x20);
+                let cd11 = _mm256_permute2x128_si256(c.x[1], d.x[1], 0x31);
                 (
                     Self { x: [ab00, cd00], ni: a.ni },
                     Self { x: [ab01, cd01], ni: a.ni },
