@@ -38,26 +38,6 @@ runtime CPU detection is not yet supported.
 | ---------- | ---------- | ------------------ |
 | ChaCha     | c2-chacha  | :heavy_check_mark: |
 
-## SIMD
-
-Many of the crates in this project include optimized SIMD implementations,
-enabled by default on x86-64 by the "simd" feature. The fastest implementation
-available for your hardware will be automatically selected at runtime, except
-in no-std builds.
-
-For other hardware platforms, e.g. ARM: an alternative, portable SIMD backend
-based on the packed\_simd crate is available for recent nightly Rust; you can
-enable it as "packed\_simd". 
-
-If you'd prefer to minimize usage of `unsafe` code: disable the "simd" feature
-to switch to a generic implementation.
-
-| feature        | crate        | no `unsafe`        | rust version   | build time? | performance   |
-| -------------- | ------------ | ------------------ | -------------- | ----------- | ------------- |
-| simd (default) | ppv\_lite86  | :x:                | 1.27           | fast        | fast          |
-| (no simd)      | ppv\_null    | :heavy_check_mark: |                | fast        | slow          |
-| packed\_simd   | packed\_simd |                    | recent nightly | slow        | fast          |
-
 ## License
 
 All crates licensed under either of
