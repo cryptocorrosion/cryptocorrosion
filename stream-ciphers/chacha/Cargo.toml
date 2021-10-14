@@ -12,7 +12,7 @@ readme = "README.md"
 documentation = "https://docs.rs/c2-chacha"
 
 [dependencies]
-ppv-lite86 = { package = "ppv-lite86", version = "0.2.8", default-features = false }
+ppv-lite86 = { package = "ppv-lite86", version = "0.2.14", default-features = false }
 cipher = { version = "0.2", optional = true }
 
 [dev-dependencies]
