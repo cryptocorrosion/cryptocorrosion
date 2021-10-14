@@ -4,6 +4,8 @@
 //!
 //! Stream-cipher usage:
 //! ```
+//! #[cfg(features = "std")]
+//! fn demo() {
 //! extern crate c2_chacha;
 //!
 //! use c2_chacha::stream_cipher::{NewStreamCipher, SyncStreamCipher, SyncStreamCipherSeek};
@@ -25,6 +27,7 @@
 //! let mut cipher = ChaCha12::new_var(key, iv).unwrap();
 //! for chunk in buffer.chunks_mut(3) {
 //!     cipher.apply_keystream(chunk);
+//! }
 //! }
 //! ```
 
