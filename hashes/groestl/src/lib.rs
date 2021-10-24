@@ -86,7 +86,7 @@ macro_rules! impl_digest {
                 let compressor = $compressor::new(iv.0);
                 Self {
                     buffer: BlockBuffer::default(),
-                    compressor: compressor,
+                    compressor,
                     block_counter: 0,
                 }
             }
