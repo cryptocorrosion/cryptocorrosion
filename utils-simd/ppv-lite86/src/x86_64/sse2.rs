@@ -1015,16 +1015,6 @@ where
 {
 }
 
-impl<NI: Copy> u32x4x4<Avx2Machine<NI>> for u32x4x4_sse2<YesS3, YesS4, NI>
-where
-    u32x4_sse2<YesS3, YesS4, NI>: RotateEachWord32 + BSwap,
-    Avx2Machine<NI>: Machine,
-    u32x4x4_sse2<YesS3, YesS4, NI>: MultiLane<[<Avx2Machine<NI> as Machine>::u32x4; 4]>,
-    u32x4x4_sse2<YesS3, YesS4, NI>: Vec4<<Avx2Machine<NI> as Machine>::u32x4>,
-    u32x4x4_sse2<YesS3, YesS4, NI>: Vec4Ext<<Avx2Machine<NI> as Machine>::u32x4>,
-    u32x4x4_sse2<YesS3, YesS4, NI>: Vector<[u32; 16]>,
-{
-}
 impl<NI: Copy> u64x2x4<Avx2Machine<NI>> for u64x2x4_sse2<YesS3, YesS4, NI>
 where
     u64x2_sse2<YesS3, YesS4, NI>: RotateEachWord64 + RotateEachWord32 + BSwap,
