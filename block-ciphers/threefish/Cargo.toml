@@ -7,9 +7,10 @@ description = "Threefish block cipher"
 documentation = "https://docs.rs/threefish"
 repository = "https://github.com/cryptocorrosion/cryptocorrosion"
 keywords = ["crypto", "threefish", "gost", "block-cipher"]
+edition = "2018"
 
 [dependencies]
-cipher = "0.2"
+cipher = "0.3"
 
 [dev-dependencies]
 hex-literal = "0.2"
