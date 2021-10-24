@@ -175,24 +175,48 @@ impl<W: BSwap + Copy, G> BSwap for x2<W, G> {
 impl<W: StoreBytes + BSwap + Copy, G> StoreBytes for x2<W, G> {
     #[inline(always)]
     unsafe fn unsafe_read_le(input: &[u8]) -> Self {
-        let input = input.split_at(16);
+        let input = input.split_at(input.len() / 2);
         x2::new([W::unsafe_read_le(input.0), W::unsafe_read_le(input.1)])
     }
     #[inline(always)]
     unsafe fn unsafe_read_be(input: &[u8]) -> Self {
-        x2::unsafe_read_le(input).bswap()
+        let input = input.split_at(input.len() / 2);
+        x2::new([W::unsafe_read_be(input.0), W::unsafe_read_be(input.1)])
     }
     #[inline(always)]
     fn write_le(self, out: &mut [u8]) {
-        let out = out.split_at_mut(16);
+        let out = out.split_at_mut(out.len() / 2);
         self.0[0].write_le(out.0);
         self.0[1].write_le(out.1);
     }
     #[inline(always)]
     fn write_be(self, out: &mut [u8]) {
-        let out = out.split_at_mut(16);
+        let out = out.split_at_mut(out.len() / 2);
         self.0[0].write_be(out.0);
         self.0[1].write_be(out.1);
+    }
+}
+impl<W: Copy + LaneWords4, G: Copy> LaneWords4 for x2<W, G> {
+    #[inline(always)]
+    fn shuffle_lane_words2301(self) -> Self {
+        Self::new([
+            self.0[0].shuffle_lane_words2301(),
+            self.0[1].shuffle_lane_words2301(),
+        ])
+    }
+    #[inline(always)]
+    fn shuffle_lane_words1230(self) -> Self {
+        Self::new([
+            self.0[0].shuffle_lane_words1230(),
+            self.0[1].shuffle_lane_words1230(),
+        ])
+    }
+    #[inline(always)]
+    fn shuffle_lane_words3012(self) -> Self {
+        Self::new([
+            self.0[0].shuffle_lane_words3012(),
+            self.0[1].shuffle_lane_words3012(),
+        ])
     }
 }
 
@@ -379,30 +403,39 @@ impl<W: BSwap + Copy> BSwap for x4<W> {
 impl<W: StoreBytes + BSwap + Copy> StoreBytes for x4<W> {
     #[inline(always)]
     unsafe fn unsafe_read_le(input: &[u8]) -> Self {
+        let n = input.len() / 4;
         x4([
-            W::unsafe_read_le(&input[0..16]),
-            W::unsafe_read_le(&input[16..32]),
-            W::unsafe_read_le(&input[32..48]),
-            W::unsafe_read_le(&input[48..64]),
+            W::unsafe_read_le(&input[..n]),
+            W::unsafe_read_le(&input[n..n * 2]),
+            W::unsafe_read_le(&input[n * 2..n * 3]),
+            W::unsafe_read_le(&input[n * 3..]),
         ])
     }
     #[inline(always)]
     unsafe fn unsafe_read_be(input: &[u8]) -> Self {
-        x4::unsafe_read_le(input).bswap()
+        let n = input.len() / 4;
+        x4([
+            W::unsafe_read_be(&input[..n]),
+            W::unsafe_read_be(&input[n..n * 2]),
+            W::unsafe_read_be(&input[n * 2..n * 3]),
+            W::unsafe_read_be(&input[n * 3..]),
+        ])
     }
     #[inline(always)]
     fn write_le(self, out: &mut [u8]) {
-        self.0[0].write_le(&mut out[0..16]);
-        self.0[1].write_le(&mut out[16..32]);
-        self.0[2].write_le(&mut out[32..48]);
-        self.0[3].write_le(&mut out[48..64]);
+        let n = out.len() / 4;
+        self.0[0].write_le(&mut out[..n]);
+        self.0[1].write_le(&mut out[n..n * 2]);
+        self.0[2].write_le(&mut out[n * 2..n * 3]);
+        self.0[3].write_le(&mut out[n * 3..]);
     }
     #[inline(always)]
     fn write_be(self, out: &mut [u8]) {
-        self.0[0].write_be(&mut out[0..16]);
-        self.0[1].write_be(&mut out[16..32]);
-        self.0[2].write_be(&mut out[32..48]);
-        self.0[3].write_be(&mut out[48..64]);
+        let n = out.len() / 4;
+        self.0[0].write_be(&mut out[..n]);
+        self.0[1].write_be(&mut out[n..n * 2]);
+        self.0[2].write_be(&mut out[n * 2..n * 3]);
+        self.0[3].write_be(&mut out[n * 3..]);
     }
 }
 impl<W: Copy + LaneWords4> LaneWords4 for x4<W> {
