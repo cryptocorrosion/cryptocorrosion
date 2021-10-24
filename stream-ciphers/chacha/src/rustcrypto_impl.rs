@@ -1,10 +1,8 @@
 use crate::guts::generic_array::typenum::{Unsigned, U10, U12, U24, U32, U4, U6, U8};
 use crate::guts::generic_array::{ArrayLength, GenericArray};
 use crate::guts::{ChaCha, Machine, BLOCK, BLOCK64, BUFSZ};
-pub use cipher::stream as stream_cipher;
-use cipher::stream::{
-    LoopError, NewStreamCipher, OverflowError, SeekNum, SyncStreamCipher, SyncStreamCipherSeek,
-};
+use cipher::errors::{LoopError, OverflowError};
+use cipher::{NewCipher, SeekNum, StreamCipher, StreamCipherSeek};
 use core::cmp;
 use core::convert::TryInto;
 
@@ -178,7 +176,7 @@ impl<NonceSize, Rounds: Unsigned, IsX> ChaChaAny<NonceSize, Rounds, IsX> {
     }
 }
 
-impl<NonceSize, Rounds> NewStreamCipher for ChaChaAny<NonceSize, Rounds, O>
+impl<NonceSize, Rounds> NewCipher for ChaChaAny<NonceSize, Rounds, O>
 where
     NonceSize: Unsigned + ArrayLength<u8> + Default,
     Rounds: Default,
@@ -194,7 +192,7 @@ where
     }
 }
 
-impl<Rounds: Unsigned + Default> NewStreamCipher for ChaChaAny<U24, Rounds, X> {
+impl<Rounds: Unsigned + Default> NewCipher for ChaChaAny<U24, Rounds, X> {
     type KeySize = U32;
     type NonceSize = U24;
     #[inline]
@@ -206,7 +204,7 @@ impl<Rounds: Unsigned + Default> NewStreamCipher for ChaChaAny<U24, Rounds, X> {
     }
 }
 
-impl<NonceSize: Unsigned, Rounds, IsX> SyncStreamCipherSeek for ChaChaAny<NonceSize, Rounds, IsX> {
+impl<NonceSize: Unsigned, Rounds, IsX> StreamCipherSeek for ChaChaAny<NonceSize, Rounds, IsX> {
     #[inline]
     fn try_current_pos<T: SeekNum>(&self) -> Result<T, OverflowError> {
         unimplemented!()
@@ -219,7 +217,7 @@ impl<NonceSize: Unsigned, Rounds, IsX> SyncStreamCipherSeek for ChaChaAny<NonceS
     }
 }
 
-impl<NonceSize, Rounds: Unsigned, IsX> SyncStreamCipher for ChaChaAny<NonceSize, Rounds, IsX> {
+impl<NonceSize, Rounds: Unsigned, IsX> StreamCipher for ChaChaAny<NonceSize, Rounds, IsX> {
     #[inline]
     fn try_apply_keystream(&mut self, data: &mut [u8]) -> Result<(), LoopError> {
         Self::try_apply_keystream(self, data).map_err(|_| LoopError)
