@@ -1,0 +1,9 @@
+name: check-rustfmt
+on: pull_request
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: cargo-fmt
+        run: cargo fmt -- --check
