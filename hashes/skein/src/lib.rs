@@ -11,9 +11,10 @@ pub use digest::Digest;
 
 use block_buffer::block_padding::ZeroPadding;
 use block_buffer::BlockBuffer;
+use cipher::{BlockCipher, BlockEncrypt};
 use digest::generic_array::typenum::{NonZero, PartialDiv, Unsigned, U128, U32, U64, U8};
 use digest::generic_array::ArrayLength;
-use threefish_cipher::{BlockCipher, Threefish1024, Threefish256, Threefish512};
+use threefish_cipher::{Threefish1024, Threefish256, Threefish512};
 
 /// N word buffer.
 #[derive(Copy, Clone)]
