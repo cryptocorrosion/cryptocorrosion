@@ -141,6 +141,7 @@ pub trait u32x4x2<M: Machine>:
     + MultiLane<[M::u32x4; 2]>
     + ArithOps
     + Into<vec256_storage>
+    + StoreBytes
 {
 }
 pub trait u64x2x2<M: Machine>:
@@ -184,6 +185,7 @@ pub trait u32x4x4<M: Machine>:
     + ArithOps
     + LaneWords4
     + Into<vec512_storage>
+    + StoreBytes
 {
 }
 pub trait u64x2x4<M: Machine>:

@@ -1405,6 +1405,28 @@ pub mod avx2 {
             Self::new(p.avx)
         }
     }
+    impl<NI> StoreBytes for u32x4x2_avx2<NI> {
+        #[inline(always)]
+        unsafe fn unsafe_read_le(input: &[u8]) -> Self {
+            assert_eq!(input.len(), 32);
+            Self::new(_mm256_loadu_si256(input.as_ptr() as *const _))
+        }
+        #[inline(always)]
+        unsafe fn unsafe_read_be(input: &[u8]) -> Self {
+            Self::unsafe_read_le(input).bswap()
+        }
+        #[inline(always)]
+        fn write_le(self, out: &mut [u8]) {
+            unsafe {
+                assert_eq!(out.len(), 32);
+                _mm256_storeu_si256(out.as_mut_ptr() as *mut _, self.x)
+            }
+        }
+        #[inline(always)]
+        fn write_be(self, out: &mut [u8]) {
+            self.bswap().write_le(out)
+        }
+    }
     impl<NI> MultiLane<[u32x4_sse2<YesS3, YesS4, NI>; 2]> for u32x4x2_avx2<NI> {
         #[inline(always)]
         fn to_lanes(self) -> [u32x4_sse2<YesS3, YesS4, NI>; 2] {
@@ -1625,10 +1647,8 @@ pub mod avx2 {
         #[inline(always)]
         fn insert(self, w: u32x4_sse2<YesS3, YesS4, NI>, i: u32) -> Self {
             Self::new(match i {
-                0 => [self.0[0].insert(w, 0), self.0[1]],
-                1 => [self.0[0].insert(w, 1), self.0[1]],
-                2 => [self.0[0], self.0[1].insert(w, 0)],
-                3 => [self.0[0], self.0[1].insert(w, 1)],
+                0 | 1 => [self.0[0].insert(w, i), self.0[1]],
+                2 | 3 => [self.0[0], self.0[1].insert(w, i - 2)],
                 _ => panic!(),
             })
         }
