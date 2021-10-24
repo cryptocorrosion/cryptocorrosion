@@ -883,9 +883,7 @@ pub type u128x4_sse2<S3, S4, NI> = x4<u128x1_sse2<S3, S4, NI>>;
 impl<S3, S4, NI> Vector<[u32; 16]> for u32x4x4_sse2<S3, S4, NI> {
     #[inline(always)]
     fn to_scalars(self) -> [u32; 16] {
-        unsafe {
-            core::mem::transmute(self)
-        }
+        unsafe { core::mem::transmute(self) }
     }
 }
 
@@ -1439,9 +1437,7 @@ pub mod avx2 {
         }
         #[inline(always)]
         fn from_lanes(x: [u32x4_sse2<YesS3, YesS4, NI>; 2]) -> Self {
-            Self::new(unsafe {
-                _mm256_setr_m128i(x[0].x, x[1].x)
-            })
+            Self::new(unsafe { _mm256_setr_m128i(x[0].x, x[1].x) })
         }
     }
     impl<NI> Vec2<u32x4_sse2<YesS3, YesS4, NI>> for u32x4x2_avx2<NI> {
@@ -1517,9 +1513,7 @@ pub mod avx2 {
     impl<NI> From<u32x4x2_avx2<NI>> for vec256_storage {
         #[inline(always)]
         fn from(x: u32x4x2_avx2<NI>) -> Self {
-            Self {
-                avx: x.x,
-            }
+            Self { avx: x.x }
         }
     }
 
@@ -1547,9 +1541,7 @@ pub mod avx2 {
                 type Output = Self;
                 #[inline(always)]
                 fn $op_fn(self, rhs: Self) -> Self::Output {
-                    Self::new(unsafe {
-                        $impl_fn(self.x, rhs.x)
-                    })
+                    Self::new(unsafe { $impl_fn(self.x, rhs.x) })
                 }
             }
         };
@@ -1581,30 +1573,22 @@ pub mod avx2 {
     {
         #[inline(always)]
         fn from(x: x2<u128x1_sse2<YesS3, YesS4, NI>, G0>) -> Self {
-            Self::new(unsafe {
-                _mm256_setr_m128i(x.0[0].x, x.0[1].x)
-            })
+            Self::new(unsafe { _mm256_setr_m128i(x.0[0].x, x.0[1].x) })
         }
     }
 
     impl<NI> LaneWords4 for u32x4x2_avx2<NI> {
         #[inline(always)]
         fn shuffle_lane_words1230(self) -> Self {
-            Self::new(unsafe {
-                _mm256_shuffle_epi32(self.x, 0b1001_0011)
-            })
+            Self::new(unsafe { _mm256_shuffle_epi32(self.x, 0b1001_0011) })
         }
         #[inline(always)]
         fn shuffle_lane_words2301(self) -> Self {
-            Self::new(unsafe {
-                _mm256_shuffle_epi32(self.x, 0b0100_1110)
-            })
+            Self::new(unsafe { _mm256_shuffle_epi32(self.x, 0b0100_1110) })
         }
         #[inline(always)]
         fn shuffle_lane_words3012(self) -> Self {
-            Self::new(unsafe {
-                _mm256_shuffle_epi32(self.x, 0b0011_1001)
-            })
+            Self::new(unsafe { _mm256_shuffle_epi32(self.x, 0b0011_1001) })
         }
     }
 
@@ -1616,7 +1600,10 @@ pub mod avx2 {
     impl<NI: Copy> Store<vec512_storage> for u32x4x4_avx2<NI> {
         #[inline(always)]
         unsafe fn unpack(p: vec512_storage) -> Self {
-            Self::new([u32x4x2_avx2::unpack(p.avx[0]), u32x4x2_avx2::unpack(p.avx[1])])
+            Self::new([
+                u32x4x2_avx2::unpack(p.avx[0]),
+                u32x4x2_avx2::unpack(p.avx[1]),
+            ])
         }
     }
     impl<NI: Copy> MultiLane<[u32x4_sse2<YesS3, YesS4, NI>; 4]> for u32x4x4_avx2<NI> {
@@ -1688,9 +1675,7 @@ pub mod avx2 {
     impl<NI: Copy> Vector<[u32; 16]> for u32x4x4_avx2<NI> {
         #[inline(always)]
         fn to_scalars(self) -> [u32; 16] {
-            unsafe {
-                core::mem::transmute(self)
-            }
+            unsafe { core::mem::transmute(self) }
         }
     }
     impl<NI: Copy> From<u32x4x4_avx2<NI>> for vec512_storage {
@@ -1704,8 +1689,7 @@ pub mod avx2 {
             }
         }
     }
-    impl<NI: Copy> From<x4<u128x1_sse2<YesS3, YesS4, NI>>> for u32x4x4_avx2<NI>
-    {
+    impl<NI: Copy> From<x4<u128x1_sse2<YesS3, YesS4, NI>>> for u32x4x4_avx2<NI> {
         #[inline(always)]
         fn from(x: x4<u128x1_sse2<YesS3, YesS4, NI>>) -> Self {
             Self::new(unsafe {

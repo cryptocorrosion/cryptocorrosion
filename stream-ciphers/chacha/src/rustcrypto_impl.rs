@@ -1,12 +1,12 @@
 use crate::guts::generic_array::typenum::{Unsigned, U10, U12, U24, U32, U4, U6, U8};
 use crate::guts::generic_array::{ArrayLength, GenericArray};
 use crate::guts::{ChaCha, Machine, BLOCK, BLOCK64, BUFSZ};
-use core::cmp;
-use core::convert::TryInto;
 pub use cipher::stream as stream_cipher;
 use cipher::stream::{
     LoopError, NewStreamCipher, OverflowError, SeekNum, SyncStreamCipher, SyncStreamCipherSeek,
 };
+use core::cmp;
+use core::convert::TryInto;
 
 const BIG_LEN: u64 = 0;
 const SMALL_LEN: u64 = 1 << 32;
