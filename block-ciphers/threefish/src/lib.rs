@@ -1,9 +1,6 @@
 #![no_std]
 #![allow(non_upper_case_globals)]
-extern crate cipher;
-#[cfg(test)]
-#[macro_use]
-extern crate hex_literal;
+
 use core::convert::TryInto;
 use core::ops::BitXor;
 
@@ -12,7 +9,7 @@ use consts::{C240, P_1024, P_256, P_512, R_1024, R_256, R_512};
 
 use cipher::generic_array::typenum::{U1, U128, U32, U64};
 use cipher::generic_array::GenericArray;
-pub use cipher::{BlockCipher, NewBlockCipher};
+use cipher::{BlockCipher, BlockDecrypt, BlockEncrypt, NewBlockCipher};
 
 fn mix(r: u32, x: (u64, u64)) -> (u64, u64) {
     let y0 = x.0.wrapping_add(x.1);
@@ -129,7 +126,9 @@ macro_rules! impl_threefish(
         impl BlockCipher for $name {
             type BlockSize = $block_size;
             type ParBlocks = U1;
+        }
 
+        impl BlockEncrypt for $name {
             fn encrypt_block(&self, block: &mut GenericArray<u8, Self::BlockSize>)
             {
                 let mut v = [0u64; $n_w];
@@ -163,7 +162,9 @@ macro_rules! impl_threefish(
 
                 write_u64v_le(block, &v[..]);
             }
+        }
 
+        impl BlockDecrypt for $name {
             fn decrypt_block(&self, block: &mut GenericArray<u8, Self::BlockSize>)
             {
                 let mut v = [0u64; $n_w];
@@ -210,7 +211,8 @@ mod test {
 
     use super::{Threefish1024, Threefish256, Threefish512};
     use cipher::generic_array::GenericArray;
-    use cipher::{BlockCipher, NewBlockCipher};
+    use cipher::{BlockDecrypt, BlockEncrypt, NewBlockCipher};
+    use hex_literal::hex;
 
     #[test]
     fn test_256() {

@@ -7,11 +7,13 @@ description = "Skein hash functions"
 repository = "https://github.com/cryptocorrosion/hashes"
 keywords = ["crypto", "skein", "hash", "digest"]
 categories = ["cryptography", "no-std"]
+edition = "2018"
 
 [dependencies]
 block-buffer = { version = "0.9", features = ["block-padding"] }
 digest = "0.9"
 threefish-cipher = "0.4"
+cipher = "0.3"
 
 [dev-dependencies]
 digest = { version = "0.9", features = ["dev"] }
