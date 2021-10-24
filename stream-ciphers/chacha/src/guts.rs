@@ -2,7 +2,7 @@
 pub use cipher::generic_array;
 
 pub use ppv_lite86::Machine;
-use ppv_lite86::{vec128_storage, ArithOps, BitOps32, LaneWords4, MultiLane, StoreBytes, Vec4, Vec4Ext, Vector};
+use ppv_lite86::{vec128_storage, ArithOps, BitOps32, LaneWords4, MultiLane, StoreBytes, Vec4, Vec4Ext};
 
 pub(crate) const BLOCK: usize = 64;
 pub(crate) const BLOCK64: u64 = BLOCK as u64;
@@ -233,12 +233,6 @@ fn d0123<Mach: Machine>(m: Mach, d: vec128_storage) -> Mach::u32x4x4 {
     m.unpack((Mach::u64x2x4::from_lanes([d0, d0, d0, d0]) + incr).into())
 }
 
-fn to_bytes(xs: [u32; 16]) -> [u8; 64] {
-    unsafe {
-        core::mem::transmute(xs)
-    }
-}
-
 #[allow(clippy::many_single_char_names)]
 #[inline(always)]
 fn refill_wide_impl<Mach: Machine>(
@@ -264,10 +258,10 @@ fn refill_wide_impl<Mach: Machine>(
     let sc = Mach::u32x4x4::from_lanes([sc, sc, sc, sc]);
     let sd = d0123(m, state.d);
     let results = Mach::u32x4x4::transpose4(x.a + kk, x.b + sb, x.c + sc, x.d + sd);
-    out[0..64].copy_from_slice(&to_bytes(results.0.to_scalars()));
-    out[64..128].copy_from_slice(&to_bytes(results.1.to_scalars()));
-    out[128..192].copy_from_slice(&to_bytes(results.2.to_scalars()));
-    out[192..256].copy_from_slice(&to_bytes(results.3.to_scalars()));
+    results.0.write_le(&mut out[0..64]);
+    results.1.write_le(&mut out[64..128]);
+    results.2.write_le(&mut out[128..192]);
+    results.3.write_le(&mut out[192..256]);
     state.d = add_pos(m, sd.to_lanes()[0], 4).into();
 }
 
