@@ -1,6 +1,6 @@
 [package]
 name = "ppv-lite86"
-version = "0.2.16"
+version = "0.2.17"
 authors = ["The CryptoCorrosion Contributors"]
 edition = "2018"
 license = "MIT/Apache-2.0"
@@ -18,4 +18,4 @@ travis-ci = { repository = "cryptocorrosion/cryptocorrosion" }
 default = ["std"]
 std = []
 simd = [] # deprecated
-no_simd = [] # for weird platforms like "x86_64 without SSE2"
+no_simd = []
