@@ -18,6 +18,7 @@ use block_buffer::BlockBuffer;
 use core::fmt::{Debug, Formatter, Result};
 use digest::generic_array::GenericArray as DGenericArray;
 pub use digest::Digest;
+use zerocopy::transmute;
 
 mod compressor;
 use crate::compressor::{init1024, init512, of1024, of512, tf1024, tf512};
@@ -26,17 +27,13 @@ use crate::compressor::{init1024, init512, of1024, of512, tf1024, tf512};
 struct Align16<T>(T);
 
 type Block512 = [u64; 512 / 64];
-union CvBytes512 {
-    block: Block512,
-    cv: compressor::X4,
-}
 #[derive(Clone)]
 struct Compressor512 {
     cv: compressor::X4,
 }
 impl Compressor512 {
     fn new(block: Block512) -> Self {
-        let cv = init512(unsafe { CvBytes512 { block }.cv });
+        let cv = init512(transmute!(block));
         Compressor512 { cv }
     }
     fn input(&mut self, data: &BBGenericArray<u8, U64>) {
@@ -44,7 +41,7 @@ impl Compressor512 {
     }
     fn finalize_dirty(&mut self) -> Block512 {
         of512(&mut self.cv);
-        unsafe { CvBytes512 { cv: self.cv }.block }
+        transmute!(self.cv)
     }
 }
 

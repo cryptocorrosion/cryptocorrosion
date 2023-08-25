@@ -10,6 +10,7 @@ keywords = ["crypto", "simd", "x86"]
 categories = ["cryptography", "no-std"]
 
 [dependencies]
+zerocopy = { version = "0.6.3", features = ["simd"] }
 
 [badges]
 travis-ci = { repository = "cryptocorrosion/cryptocorrosion" }
