@@ -113,6 +113,18 @@ pub union vec128_storage {
     u128x1: [u128; 1],
     sse2: __m128i,
 }
+
+/// Because vec128_storage is a union, clearing any of the values will clear
+/// them all. Zeroize also has implemented zeroize for SIMD registers.
+#[cfg(feature = "zeroize_support")] use zeroize::Zeroize;
+#[cfg(feature = "zeroize_support")]
+impl Zeroize for vec128_storage {
+    fn zeroize(&mut self) {
+        unsafe {
+            self.sse2.zeroize();
+        }
+    }
+}
 impl Store<vec128_storage> for vec128_storage {
     #[inline(always)]
     unsafe fn unpack(p: vec128_storage) -> Self {
@@ -433,5 +445,29 @@ macro_rules! dispatch_light256 {
         dispatch_light256!($mach, $MTy, {
             $([$pub $(($krate))*])* fn $name($($arg: $argty),*) -> () $body
         });
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use core::mem::transmute;
+
+    #[test]
+    #[cfg(all(feature = "zeroize_support", any(target_arch = "x86", target_arch = "x86_64")))]
+    fn test_zeroize_vec128_storage() {
+        let xs = [0x0f0e_0d0c, 0x0b0a_0908, 0x0706_0504, 0x0302_0100];
+
+        let mut m = vec128_storage::from(xs);
+
+        m.zeroize();
+        /// accessing union field is unsafe
+        unsafe {
+            assert_eq!(m.u32x4, [0u32; 4]);
+            assert_eq!(m.u64x2, [0u64; 2]);
+            assert_eq!(m.u128x1, [0u128; 1]);
+            let arr: [u32; 4] = transmute(m);
+            assert_eq!(arr, [0u32; 4]);
+        }
     }
 }

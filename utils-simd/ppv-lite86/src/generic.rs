@@ -4,12 +4,19 @@ use crate::soft::{x2, x4};
 use crate::types::*;
 use core::ops::*;
 
+#[cfg(feature = "zeroize_support")] use zeroize::Zeroize;
+
 #[repr(C)]
 #[derive(Clone, Copy)]
+#[cfg_attr(
+    feature = "zeroize_support",
+    derive(Zeroize),
+)]
 pub union vec128_storage {
     d: [u32; 4],
     q: [u64; 2],
 }
+#[cfg(feature = "zeroize_support")]
 impl From<[u32; 4]> for vec128_storage {
     #[inline(always)]
     fn from(d: [u32; 4]) -> Self {
@@ -48,6 +55,10 @@ impl PartialEq<vec128_storage> for vec128_storage {
     }
 }
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(
+    feature = "zeroize_support",
+    derive(Zeroize)
+)]
 pub struct vec256_storage {
     v128: [vec128_storage; 2],
 }
@@ -78,6 +89,10 @@ impl From<[u64; 4]> for vec256_storage {
     }
 }
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(
+    feature = "zeroize_support",
+    derive(Zeroize)
+)]
 pub struct vec512_storage {
     v128: [vec128_storage; 4],
 }
@@ -861,5 +876,11 @@ mod test {
 
         let y = m.vec(ys);
         assert_eq!(x, y);
+    }
+
+    #[test]
+    #[cfg(feature = "zeroize")]
+    fn test_zeroize_vec128_storage_generic() {
+        
     }
 }
