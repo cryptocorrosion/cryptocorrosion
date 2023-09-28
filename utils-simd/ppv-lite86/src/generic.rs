@@ -8,15 +8,18 @@ use core::ops::*;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-#[cfg_attr(
-    feature = "zeroize_support",
-    derive(Zeroize),
-)]
 pub union vec128_storage {
     d: [u32; 4],
     q: [u64; 2],
 }
 #[cfg(feature = "zeroize_support")]
+impl Zeroize for vec128_storage {
+    fn zeroize(&mut self) {
+        unsafe {
+            self.d.zeroize();
+        }
+    }
+}
 impl From<[u32; 4]> for vec128_storage {
     #[inline(always)]
     fn from(d: [u32; 4]) -> Self {
@@ -881,6 +884,15 @@ mod test {
     #[test]
     #[cfg(feature = "zeroize")]
     fn test_zeroize_vec128_storage_generic() {
-        
+        let xs = [0x0405_0607, 0x0001_0203, 0x0302_0100, 0x0706_0504];
+
+        let mut vec = vec128_storage::from(xs);
+
+        vec.zeroize();
+
+        unsafe {
+            assert_eq!(vec.d, [0u32; 4]);
+            assert_eq!(vec.q, [0u64; 2]);
+        }
     }
 }
