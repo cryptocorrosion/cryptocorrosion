@@ -461,7 +461,6 @@ mod test {
         let mut m = vec128_storage::from(xs);
 
         m.zeroize();
-        /// accessing union field is unsafe
         unsafe {
             assert_eq!(m.u32x4, [0u32; 4]);
             assert_eq!(m.u64x2, [0u64; 2]);
