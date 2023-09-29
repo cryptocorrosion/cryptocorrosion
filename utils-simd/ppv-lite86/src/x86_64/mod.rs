@@ -467,12 +467,14 @@ macro_rules! dispatch_light256 {
 #[cfg(test)]
 mod test {
     use super::*;
+    #[cfg(feature = "zeroize_support")]
     use core::mem::transmute;
 
     #[cfg(all(feature = "zeroize_support", any(target_arch = "x86", target_arch = "x86_64")))]
     fn vec128_storage_zeroize_assertions(m: &vec128_storage) {
         unsafe {
             assert_eq!(m.u32x4, [0u32; 4]);
+            // this might be redundant... but as long as the tests pass it should be okay
             assert_eq!(m.u64x2, [0u64; 2]);
             assert_eq!(m.u128x1, [0u128; 1]);
             let arr: [u32; 4] = transmute(*m);
