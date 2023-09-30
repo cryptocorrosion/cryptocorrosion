@@ -166,6 +166,14 @@ pub union vec256_storage {
     sse2: [vec128_storage; 2],
     avx: __m256i,
 }
+#[cfg(feature = "zeroize_support")]
+impl Zeroize for vec256_storage {
+    fn zeroize(&mut self) {
+        unsafe {
+            self.sse2.zeroize();
+        }
+    }
+}
 impl From<[u64; 4]> for vec256_storage {
     #[inline(always)]
     fn from(u64x4: [u64; 4]) -> Self {
@@ -204,6 +212,14 @@ pub union vec512_storage {
     u128x4: [u128; 4],
     sse2: [vec128_storage; 4],
     avx: [vec256_storage; 2],
+}
+#[cfg(feature = "zeroize_support")]
+impl Zeroize for vec512_storage {
+    fn zeroize(&mut self) {
+        unsafe {
+            self.sse2.zeroize();
+        }
+    }
 }
 impl Default for vec512_storage {
     #[inline(always)]
@@ -451,7 +467,50 @@ macro_rules! dispatch_light256 {
 #[cfg(test)]
 mod test {
     use super::*;
+    #[cfg(feature = "zeroize_support")]
     use core::mem::transmute;
+
+    #[cfg(all(feature = "zeroize_support", any(target_arch = "x86", target_arch = "x86_64")))]
+    fn vec128_storage_zeroize_assertions(m: &vec128_storage) {
+        unsafe {
+            assert_eq!(m.u32x4, [0u32; 4]);
+            // this might be redundant... but as long as the tests pass it should be okay
+            assert_eq!(m.u64x2, [0u64; 2]);
+            assert_eq!(m.u128x1, [0u128; 1]);
+            let arr: [u32; 4] = transmute(*m);
+            assert_eq!(arr, [0u32; 4]);
+        }
+    }
+
+    #[cfg(all(feature = "zeroize_support", any(target_arch = "x86", target_arch = "x86_64")))]
+    fn vec256_storage_zeroize_assertions(m: &vec256_storage) {
+        unsafe {
+            assert_eq!(m.u32x8, [0u32; 8]);
+            assert_eq!(m.u64x4, [0u64; 4]);
+            assert_eq!(m.u128x2, [0u128; 2]);
+            let sse2: [vec128_storage; 2] = m.sse2;
+            for s in sse2.iter() {
+                vec128_storage_zeroize_assertions(s);
+            }
+            let arr: [u32; 8] = transmute(*m);
+            assert_eq!(arr, [0u32; 8]);
+        }
+    }
+
+    #[cfg(all(feature = "zeroize_support", any(target_arch = "x86", target_arch = "x86_64")))]
+    fn vec512_storage_zeroize_assertions(m: &vec512_storage) {
+        unsafe {
+            assert_eq!(m.u32x16, [0u32; 16]);
+            assert_eq!(m.u64x8, [0u64; 8]);
+            assert_eq!(m.u128x4, [0u128; 4]);
+            for s in m.sse2.iter() {
+                vec128_storage_zeroize_assertions(s);
+            }
+            for s in m.avx.iter() {
+                vec256_storage_zeroize_assertions(s);
+            }
+        }
+    }
 
     #[test]
     #[cfg(all(feature = "zeroize_support", any(target_arch = "x86", target_arch = "x86_64")))]
@@ -461,13 +520,35 @@ mod test {
         let mut m = vec128_storage::from(xs);
 
         m.zeroize();
-        /// accessing union field is unsafe
-        unsafe {
-            assert_eq!(m.u32x4, [0u32; 4]);
-            assert_eq!(m.u64x2, [0u64; 2]);
-            assert_eq!(m.u128x1, [0u128; 1]);
-            let arr: [u32; 4] = transmute(m);
-            assert_eq!(arr, [0u32; 4]);
-        }
+        vec128_storage_zeroize_assertions(&m);
+    }
+
+    #[test]
+    #[cfg(all(feature = "zeroize_support", any(target_arch = "x86", target_arch = "x86_64")))]
+    fn test_zeroize_vec256_storage() {
+        let xs: [u64; 4] = [0x0001_0203_0405_0607, 0x0302_0100_0f0e_0d0c, 0x1001_4203_0425_0607, 0x6302_0100_3f0e_0d0c];
+        let mut m = vec256_storage::from(xs);
+
+        m.zeroize();
+        vec256_storage_zeroize_assertions(&m);
+    }
+
+    #[test]
+    #[cfg(all(feature = "zeroize_support", any(target_arch = "x86", target_arch = "x86_64")))]
+    fn test_zeroize_vec512_storage() {
+        let xs1 = [0x0f0e_0d0c, 0x0b0a_0908, 0x0706_0504, 0x0302_0100];
+        let xs2 = [0x3f3e_2d0c, 0x1b0a_0328, 0x5706_0554, 0x0312_0104];
+        let xs3 = [0x0f0b_0d2c, 0x0b0b_0902, 0x2706_0534, 0x2306_0121];
+        let xs4 = [0x3f3e_2d1c, 0x1bba_1328, 0x5726_0524, 0x5212_0144];
+        let xs: [vec128_storage; 4] = [
+            vec128_storage::from(xs1),
+            vec128_storage::from(xs2),
+            vec128_storage::from(xs3),
+            vec128_storage::from(xs4)
+        ];
+        let mut m = vec512_storage::new128(xs);
+        
+        m.zeroize();
+        vec512_storage_zeroize_assertions(&m);
     }
 }
