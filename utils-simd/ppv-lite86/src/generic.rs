@@ -881,8 +881,16 @@ mod test {
         assert_eq!(x, y);
     }
 
+    #[cfg(feature = "zeroize_support")]
+    fn zeroize_v128_assertions(v: &vec128_storage) {
+        unsafe {
+            assert_eq!(v.d, [0u32; 4]);
+            assert_eq!(v.q, [0u64; 2]);
+        }
+    }
+
     #[test]
-    #[cfg(feature = "zeroize")]
+    #[cfg(feature = "zeroize_support")]
     fn test_zeroize_vec128_storage_generic() {
         let xs = [0x0405_0607, 0x0001_0203, 0x0302_0100, 0x0706_0504];
 
@@ -890,9 +898,44 @@ mod test {
 
         vec.zeroize();
 
-        unsafe {
-            assert_eq!(vec.d, [0u32; 4]);
-            assert_eq!(vec.q, [0u64; 2]);
+        zeroize_v128_assertions(&vec);
+    }
+
+    #[test]
+    #[cfg(feature = "zeroize_support")]
+    fn test_zeroize_vec256_storage_generic() {
+        let xs = [0x0405_0607, 0x0001_0203, 0x0302_0100, 0x0706_0504];
+
+        let mut vec = vec256_storage::from(xs);
+
+        vec.zeroize();
+
+        for x in vec.v128.iter() {
+            zeroize_v128_assertions(x);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "zeroize_support")]
+    fn test_zeroize_vec512_storage_generic() {
+        let xs1 = [0x0405_0607, 0x0001_0203, 0x0302_0100, 0x0706_0504];
+        let xs2 = [0x0405_0607, 0x0001_0203, 0x0302_0100, 0x0706_0504];
+        let xs3 = [0x0405_0607, 0x0001_0203, 0x0302_0100, 0x0706_0504];
+        let xs4 = [0x0405_0607, 0x0001_0203, 0x0302_0100, 0x0706_0504];
+
+        let v1 = vec128_storage::from(xs1);
+        let v2 = vec128_storage::from(xs2);
+        let v3 = vec128_storage::from(xs3);
+        let v4 = vec128_storage::from(xs4);
+
+        let v: [vec128_storage; 4] = [v1, v2, v3, v4];
+
+        let mut vec = vec512_storage::new128(v);
+
+        vec.zeroize();
+
+        for x in vec.v128.iter() {
+            zeroize_v128_assertions(x);
         }
     }
 }
