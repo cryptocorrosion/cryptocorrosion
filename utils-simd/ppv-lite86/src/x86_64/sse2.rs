@@ -9,7 +9,7 @@ use core::marker::PhantomData;
 use core::ops::{
     Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not,
 };
-use zerocopy::{transmute, AsBytes, FromBytes};
+use zerocopy::{transmute, AsBytes, FromBytes, FromZeroes};
 
 macro_rules! impl_binop {
     ($vec:ident, $trait:ident, $fn:ident, $impl_fn:ident) => {
@@ -40,7 +40,7 @@ macro_rules! impl_binop_assign {
 macro_rules! def_vec {
     ($vec:ident, $word:ident) => {
         #[allow(non_camel_case_types)]
-        #[derive(Copy, Clone, FromBytes, AsBytes)]
+        #[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes)]
         #[repr(transparent)]
         pub struct $vec<S3, S4, NI> {
             x: __m128i,
@@ -1384,9 +1384,9 @@ pub mod avx2 {
     use core::arch::x86_64::*;
     use core::marker::PhantomData;
     use core::ops::*;
-    use zerocopy::{transmute, AsBytes, FromBytes};
+    use zerocopy::{transmute, AsBytes, FromBytes, FromZeroes};
 
-    #[derive(Copy, Clone, FromBytes, AsBytes)]
+    #[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes)]
     #[repr(transparent)]
     pub struct u32x4x2_avx2<NI> {
         x: __m256i,
