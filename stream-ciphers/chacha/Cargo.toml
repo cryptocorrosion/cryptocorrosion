@@ -3,13 +3,14 @@ name = "c2-chacha"
 version = "0.3.3"
 authors = ["The CryptoCorrosion Contributors"]
 license = "MIT/Apache-2.0"
-edition = "2018"
+edition = "2021"
 description = "The ChaCha family of stream ciphers"
 repository = "https://github.com/cryptocorrosion/cryptocorrosion"
 keywords = ["chacha", "chacha20", "xchacha20", "cipher", "crypto"]
 categories = ["cryptography", "no-std"]
 readme = "README.md"
 documentation = "https://docs.rs/c2-chacha"
+rust-version = "1.61"
 
 [dependencies]
 ppv-lite86 = { package = "ppv-lite86", version = "0.2.14", default-features = false }

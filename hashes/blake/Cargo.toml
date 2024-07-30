@@ -7,6 +7,7 @@ description = "BLAKE hash functions"
 repository = "https://github.com/cryptocorrosion/cryptocorrosion"
 keywords = ["crypto", "blake", "hash", "digest"]
 categories = ["cryptography", "no-std"]
+rust-version = "1.61"
 
 [dependencies]
 block-buffer = "0.9"

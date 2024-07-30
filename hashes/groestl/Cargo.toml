@@ -8,7 +8,8 @@ documentation = "https://docs.rs/groestl-aesni"
 keywords = ["crypto", "groestl", "hash", "digest"]
 categories = ["cryptography", "no-std"]
 repository = "https://github.com/cryptocorrosion/hashes"
-edition = "2018"
+edition = "2021"
+rust-version = "1.61"
 
 [dependencies]
 block-buffer = "0.9"
