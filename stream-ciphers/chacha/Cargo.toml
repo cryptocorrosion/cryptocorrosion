@@ -17,7 +17,7 @@ ppv-lite86 = { package = "ppv-lite86", version = "0.2.14", default-features = fa
 cipher = { version = "0.3", optional = true }
 
 [dev-dependencies]
-hex-literal = "0.2"
+hex-literal = "0.3"
 
 [features]
 default = ["std", "rustcrypto_api"]

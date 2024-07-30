@@ -4,9 +4,10 @@ use crate::soft::{x2, x4};
 use crate::types::*;
 use core::ops::*;
 use zerocopy::{AsBytes, FromBytes};
+use zerocopy_derive::{AsBytes, FromBytes, FromZeroes};
 
 #[repr(C)]
-#[derive(Clone, Copy, FromBytes, AsBytes)]
+#[derive(Clone, Copy, FromBytes, AsBytes, FromZeroes)]
 pub union vec128_storage {
     d: [u32; 4],
     q: [u64; 2],
@@ -453,13 +454,13 @@ impl Machine for GenericMachine {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Debug, PartialEq, FromBytes, AsBytes, FromZeroes)]
 #[repr(transparent)]
 pub struct u32x4_generic([u32; 4]);
-#[derive(Copy, Clone, Debug, PartialEq, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Debug, PartialEq, FromBytes, AsBytes, FromZeroes)]
 #[repr(transparent)]
 pub struct u64x2_generic([u64; 2]);
-#[derive(Copy, Clone, Debug, PartialEq, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Debug, PartialEq, FromBytes, AsBytes, FromZeroes)]
 #[repr(transparent)]
 pub struct u128x1_generic([u128; 1]);
 

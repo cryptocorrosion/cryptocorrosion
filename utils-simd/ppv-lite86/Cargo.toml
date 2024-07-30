@@ -1,6 +1,6 @@
 [package]
 name = "ppv-lite86"
-version = "0.2.18"
+version = "0.2.19"
 authors = ["The CryptoCorrosion Contributors"]
 edition = "2021"
 license = "MIT/Apache-2.0"
@@ -11,7 +11,8 @@ categories = ["cryptography", "no-std"]
 rust-version = "1.61"
 
 [dependencies]
-zerocopy = { version = "0.6.3", features = ["simd"] }
+zerocopy = { version = "0.7", features = ["simd"] }
+zerocopy-derive = "0.7"
 
 [badges]
 travis-ci = { repository = "cryptocorrosion/cryptocorrosion" }
