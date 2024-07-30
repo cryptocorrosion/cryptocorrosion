@@ -10,6 +10,7 @@ members = [
     "utils-simd/ppv-lite86",
     "utils-simd/ppv-null",
 ]
+resolver = "2"
 
 [patch.crates-io]
 c2-chacha = { path = "stream-ciphers/chacha" }
