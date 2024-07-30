@@ -1,0 +1,168 @@
+name: Tests
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+permissions:
+  contents: read
+
+jobs:
+  #check-doc:
+  #  name: Check doc
+  #  runs-on: ubuntu-latest
+  #  env:
+  #    RUSTDOCFLAGS: "-Dwarnings --cfg docsrs -Zunstable-options --generate-link-to-definition"
+  #  steps:
+  #    - uses: actions/checkout@v4
+  #    - name: Install toolchain
+  #      uses: dtolnay/rust-toolchain@master
+  #      with:
+  #        toolchain: nightly
+  #    - name: Workspace docs
+  #      run: cargo doc --all-features --no-deps
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            toolchain: stable
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            toolchain: stable
+            # TODO: also aarch64 / M1
+          - os: windows-latest
+            target: x86_64-pc-windows-gnu
+            toolchain: stable
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            toolchain: beta
+            # Test both windows-gnu and windows-msvc; use beta rust on one
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            variant: MSRV
+            toolchain: 1.61.0
+          # FIXME: some failures down the dependency tree
+          #- os: ubuntu-latest
+          #  target: x86_64-unknown-linux-gnu
+          #  toolchain: nightly
+          #  variant: minimal_versions
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: MSRV
+        if: ${{ matrix.variant == 'MSRV' }}
+        run: cp Cargo.lock.msrv Cargo.lock
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          target: ${{ matrix.target }}
+          toolchain: ${{ matrix.toolchain }}
+      - run: ${{ matrix.deps }}
+      - name: Maybe minimal versions
+        if: ${{ matrix.variant == 'minimal_versions' }}
+        run: |
+          cargo generate-lockfile -Z minimal-versions
+      - name: Test
+        run: |
+          cargo test --target ${{ matrix.target }}
+
+  test-cross:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: powerpc-unknown-linux-gnu
+            toolchain: stable
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          target: ${{ matrix.target }}
+          toolchain: ${{ matrix.toolchain }}
+      - name: Cache cargo plugins
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/
+          key: ${{ runner.os }}-cargo-plugins
+      - name: Install cross
+        run: cargo install cross || true
+      - name: Test
+        run: |
+          cross test --no-fail-fast --target ${{ matrix.target }} -p c2-chacha
+          cross test --no-fail-fast --target ${{ matrix.target }} -p ppv-lite86
+          cross test --no-fail-fast --target ${{ matrix.target }} -p ppv-null
+          cross test --no-fail-fast --target ${{ matrix.target }} -p crypto-simd
+          cross test --no-fail-fast --target ${{ matrix.target }} -p threefish-cipher
+          cross test --no-fail-fast --target ${{ matrix.target }} -p blake-hash
+          cross test --no-fail-fast --target ${{ matrix.target }} -p skein-hash
+          # Failing on PPC
+          # cross test --no-fail-fast --target ${{ matrix.target }} -p jh-x86_64
+          # groestl-aesni: not cross-tested as it only supports specific hardware.
+
+  test-miri:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          rustup toolchain install nightly --component miri
+          rustup override set nightly
+          cargo miri setup
+      - name: Test
+        run: |
+          cargo miri test -p c2-chacha
+          cargo miri test -p ppv-lite86
+          cargo miri test -p ppv-null
+          cargo miri test -p crypto-simd
+          cargo miri test -p threefish-cipher
+          cargo miri test -p blake-hash
+          cargo miri test -p skein-hash
+          # groestl-aesni: not tested as it only supports specific hardware.
+          # jh-x86_64: should work under miri but runs too slowly.
+
+  test-no-std:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+            target: thumbv6m-none-eabi
+      - name: Chacha, build only
+        run: cargo build -p c2-chacha --target=thumbv6m-none-eabi --no-default-features
+
+  test-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+            target: aarch64-apple-ios
+      - name: Chacha, build only
+        run: cargo build -p c2-chacha --target=aarch64-apple-ios
+
+  test-686:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deps
+        run: sudo apt-get update ; sudo apt install gcc-multilib
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          target: i686-unknown-linux-gnu
+          toolchain: nightly
+      - name: Chacha
+        run: cargo test -p c2-chacha --target=i686-unknown-linux-gnu
