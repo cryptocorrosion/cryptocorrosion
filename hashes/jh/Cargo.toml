@@ -12,7 +12,7 @@ edition = "2021"
 rust-version = "1.61"
 
 [dependencies]
-block-buffer = "0.9"
+block-buffer = { version = "0.9", features = ["block-padding"] }
 digest = "0.9"
 hex-literal = "0.2"
 simd = { package = "ppv-lite86", version = "0.2.6" }
