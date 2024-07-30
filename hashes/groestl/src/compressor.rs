@@ -2,7 +2,7 @@ use block_buffer::generic_array::typenum::{U128, U64};
 use block_buffer::generic_array::GenericArray;
 use core::arch::x86_64::*;
 use core::ops::BitXor;
-use zerocopy::{AsBytes, FromBytes};
+use zerocopy::{AsBytes, FromBytes, FromZeroes};
 
 trait Map2 {
     type Output;
@@ -12,7 +12,7 @@ trait Map2 {
         Self: Sized;
 }
 
-#[derive(Copy, Clone, FromBytes, AsBytes)]
+#[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 #[repr(C)]
 pub struct X4(__m128i, __m128i, __m128i, __m128i);
 
