@@ -18,6 +18,7 @@ use threefish_cipher::{Threefish1024, Threefish256, Threefish512};
 
 /// N word buffer.
 #[derive(Copy, Clone)]
+#[repr(C)]
 union Block<N>
 where
     N: ArrayLength<u8>,
@@ -43,11 +44,43 @@ where
     }
 
     fn as_byte_array(&self) -> &GenericArray<u8, N> {
+        // SAFETY: Both fields of this union have the same layout and bit
+        // validity, so it's okay to treat either field as the other field's
+        // type. Since the union is `repr(C)`, they both live in the same byte
+        // range. (One exception: They don't have the same alignment, but the
+        // alignment of the entire union is the greater of their alignments, so
+        // this isn't an issue.)
         unsafe { &self.bytes }
     }
 
     fn as_byte_array_mut(&mut self) -> &mut GenericArray<u8, N> {
+        // SAFETY: Both fields of this union have the same layout and bit
+        // validity, so it's okay to treat either field as the other field's
+        // type. Since the union is `repr(C)`, they both live in the same byte
+        // range. (One exception: They don't have the same alignment, but the
+        // alignment of the entire union is the greater of their alignments, so
+        // this isn't an issue.)
         unsafe { &mut self.bytes }
+    }
+
+    fn as_word_array(&self) -> &GenericArray<u64, <N as PartialDiv<U8>>::Output> {
+        // SAFETY: Both fields of this union have the same layout and bit
+        // validity, so it's okay to treat either field as the other field's
+        // type. Since the union is `repr(C)`, they both live in the same byte
+        // range. (One exception: They don't have the same alignment, but the
+        // alignment of the entire union is the greater of their alignments, so
+        // this isn't an issue.)
+        unsafe { &self.words }
+    }
+
+    fn as_word_array_mut(&mut self) -> &mut GenericArray<u64, <N as PartialDiv<U8>>::Output> {
+        // SAFETY: Both fields of this union have the same layout and bit
+        // validity, so it's okay to treat either field as the other field's
+        // type. Since the union is `repr(C)`, they both live in the same byte
+        // range. (One exception: They don't have the same alignment, but the
+        // alignment of the entire union is the greater of their alignments, so
+        // this isn't an issue.)
+        unsafe { &mut self.words }
     }
 
     fn from_byte_array(block: &GenericArray<u8, N>) -> Self {
@@ -81,10 +114,7 @@ where
     type Output = Block<N>;
     fn bitxor(mut self, rhs: Block<N>) -> Self::Output {
         // XOR is endian-agnostic
-        for (s, r) in unsafe { &mut self.words }
-            .iter_mut()
-            .zip(unsafe { &rhs.words })
-        {
+        for (s, r) in self.as_word_array_mut().iter_mut().zip(rhs.as_word_array()) {
             *s ^= *r;
         }
         self

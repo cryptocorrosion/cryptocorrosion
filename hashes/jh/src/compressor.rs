@@ -4,6 +4,7 @@ use core::ptr;
 use digest::generic_array::typenum::U64;
 use digest::generic_array::GenericArray;
 use simd::{vec128_storage, AndNot, Machine, Swap64, VZip, Vec2};
+use zerocopy::transmute;
 
 const E8_BITSLICE_ROUNDCONSTANT: [[u8; 32]; 42] = [
     hex!("72d5dea2df15f8677b84150ab723155781abd6904d5a87f64e9f4fc5c3d12b40"),
@@ -199,21 +200,23 @@ dispatch!(mach, M, {
 });
 
 #[derive(Clone, Copy)]
-pub union Compressor {
+pub struct Compressor {
     cv: [vec128_storage; 8],
-    bytes: [u8; 128],
 }
+
 impl Compressor {
     #[inline]
     pub fn new(bytes: [u8; 128]) -> Self {
-        Compressor { bytes }
+        Compressor {
+            cv: transmute!(bytes),
+        }
     }
     #[inline]
     pub fn input(&mut self, data: &GenericArray<u8, U64>) {
-        f8(unsafe { &mut self.cv }, data.as_ptr());
+        f8(&mut self.cv, data.as_ptr())
     }
     #[inline]
     pub fn finalize(self) -> [u8; 128] {
-        unsafe { self.bytes }
+        transmute!(self.cv)
     }
 }
