@@ -2,7 +2,7 @@ use block_buffer::generic_array::typenum::{U128, U64};
 use block_buffer::generic_array::GenericArray;
 use core::arch::x86_64::*;
 use core::ops::BitXor;
-use zerocopy_derive::{AsBytes, FromBytes, FromZeroes};
+use zerocopy::{AsBytes, FromBytes, FromZeroes};
 
 trait Map2 {
     type Output;
