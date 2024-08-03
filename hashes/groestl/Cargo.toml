@@ -15,8 +15,7 @@ rust-version = "1.61"
 block-buffer = "0.9"
 digest = "0.9"
 lazy_static = { version = "1.2", optional = true }
-zerocopy = { version = "0.7", features = ["simd"] }
-zerocopy-derive = "0.7"
+zerocopy = { version = "0.7", features = ["simd", "derive"] }
 
 [dev-dependencies]
 digest = { version = "0.9", features = ["dev"] }
