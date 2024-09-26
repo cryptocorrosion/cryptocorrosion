@@ -193,7 +193,7 @@ macro_rules! define_hasher {
         }
 
         impl digest::Update for $name {
-            fn update(&mut self, data: impl AsRef<[u8]>) {
+            fn update(&mut self, data: &[u8]) {
                 let compressor = &mut self.compressor;
                 let t = &mut self.t;
                 self.buffer.input_block(data.as_ref(), |block| {
