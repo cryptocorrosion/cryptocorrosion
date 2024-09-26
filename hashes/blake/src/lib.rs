@@ -192,10 +192,6 @@ macro_rules! define_hasher {
             }
         }
 
-        impl digest::BlockInput for $name {
-            type BlockSize = $Bytes;
-        }
-
         impl digest::Update for $name {
             fn update(&mut self, data: impl AsRef<[u8]>) {
                 let compressor = &mut self.compressor;
