@@ -259,6 +259,8 @@ macro_rules! define_hasher {
                 *self = Self::default()
             }
         }
+
+        impl digest::HashMarker for $name { }
     };
 }
 
