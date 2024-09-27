@@ -2,6 +2,7 @@
 name = "blake-hash"
 version = "0.5.0"
 authors = ["The CryptoCorrosion Contributors"]
+edition = "2021"
 license = "MIT/Apache-2.0"
 description = "BLAKE hash functions"
 repository = "https://github.com/cryptocorrosion/cryptocorrosion"
