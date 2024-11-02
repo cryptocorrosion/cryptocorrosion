@@ -16,7 +16,7 @@ block-buffer = { version = "0.9", features = ["block-padding"] }
 digest = "0.9"
 hex-literal = "0.3"
 simd = { package = "ppv-lite86", version = "0.2.6" }
-zerocopy = "0.7"
+zerocopy = "0.8"
 
 [dev-dependencies]
 digest = { version = "0.9", features = ["dev"] }
