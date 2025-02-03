@@ -12,12 +12,12 @@ pub extern crate simd;
 
 mod consts;
 
-use block_buffer::BlockBuffer;
+use block_buffer::{BlockBuffer, Eager};
 use core::convert::TryInto;
 use core::mem;
 use digest::generic_array::typenum::{PartialDiv, Unsigned, U2};
 use digest::generic_array::GenericArray;
-pub use digest::Digest;
+pub use digest::{Digest, Output};
 use simd::*;
 
 use simd::{
@@ -160,7 +160,7 @@ macro_rules! define_hasher {
         #[derive(Clone)]
         pub struct $name {
             compressor: $compressor,
-            buffer: BlockBuffer<$Bufsz>,
+            buffer: BlockBuffer<$Bufsz, Eager>,
             t: ($word, $word),
         }
 
@@ -192,30 +192,28 @@ macro_rules! define_hasher {
             }
         }
 
-        impl digest::BlockInput for $name {
-            type BlockSize = $Bytes;
-        }
-
         impl digest::Update for $name {
-            fn update(&mut self, data: impl AsRef<[u8]>) {
+            fn update(&mut self, data: &[u8]) {
                 let compressor = &mut self.compressor;
                 let t = &mut self.t;
-                self.buffer.input_block(data.as_ref(), |block| {
+                self.buffer.digest_blocks(data.as_ref(), |block| {
                     Self::increase_count(t, (mem::size_of::<$word>() * 16) as $word);
-                    compressor.put_block(block, *t);
+                    compressor.put_block(&block[0], *t);
                 });
             }
         }
 
-        impl digest::FixedOutputDirty for $name {
+        impl digest::OutputSizeUser for $name {
             type OutputSize = $Bytes;
+        }
 
-            fn finalize_into_dirty(&mut self, out: &mut GenericArray<u8, Self::OutputSize>) {
+        impl digest::FixedOutput for $name {
+            fn finalize_into(self, out: &mut Output<Self>) {
                 let mut compressor = self.compressor;
-                let buffer = &mut self.buffer;
+                let mut buffer = self.buffer;
                 let mut t = self.t;
 
-                Self::increase_count(&mut t, buffer.position() as $word);
+                Self::increase_count(&mut t, buffer.get_pos() as $word);
 
                 let mut msglen = [0u8; $buf / 8];
                 msglen[..$buf / 16].copy_from_slice(&t.1.to_be_bytes());
@@ -226,7 +224,7 @@ macro_rules! define_hasher {
                 // low bit indicates full-length variant
                 let isfull = ($bits == 8 * mem::size_of::<[$word; 8]>()) as u8;
                 // high bit indicates fit with no padding
-                let exactfit = if buffer.position() + footerlen != $buf {
+                let exactfit = if buffer.get_pos() + footerlen != $buf {
                     0x00
                 } else {
                     0x80
@@ -234,25 +232,76 @@ macro_rules! define_hasher {
                 let magic = isfull | exactfit;
 
                 // if header won't fit in last data block, pad to the end and start a new one
-                let extra_block = buffer.position() + footerlen > $buf;
+                let extra_block = buffer.get_pos() + footerlen > $buf;
                 if extra_block {
-                    let pad = $buf - buffer.position();
-                    buffer.input_block(&PADDING[..pad], |block| compressor.put_block(block, t));
-                    debug_assert_eq!(buffer.position(), 0);
+                    let pad = $buf - buffer.get_pos();
+                    buffer
+                        .digest_blocks(&PADDING[..pad], |block| compressor.put_block(&block[0], t));
+                    debug_assert_eq!(buffer.get_pos(), 0);
                 }
 
                 // pad last block up to footer start point
-                if buffer.position() == 0 {
+                if buffer.get_pos() == 0 {
                     // don't xor t when the block is only padding
                     t = (0, 0);
                 }
                 // skip begin-padding byte if continuing padding
                 let x = extra_block as usize;
-                let (start, end) = (x, x + ($buf - footerlen - buffer.position()));
-                buffer.input_block(&PADDING[start..end], |_| unreachable!());
-                buffer.input_block(&[magic], |_| unreachable!());
-                buffer.input_block(&msglen, |block| compressor.put_block(block, t));
-                debug_assert_eq!(buffer.position(), 0);
+                let (start, end) = (x, x + ($buf - footerlen - buffer.get_pos()));
+                buffer.digest_blocks(&PADDING[start..end], |_| unreachable!());
+                buffer.digest_blocks(&[magic], |_| unreachable!());
+                buffer.digest_blocks(&msglen, |block| compressor.put_block(&block[0], t));
+                debug_assert_eq!(buffer.get_pos(), 0);
+
+                out.copy_from_slice(&compressor.finalize()[..$Bytes::to_usize()]);
+            }
+        }
+
+        impl digest::FixedOutputReset for $name {
+            fn finalize_into_reset(&mut self, out: &mut Output<Self>) {
+                let mut compressor = self.compressor;
+                let buffer = &mut self.buffer;
+                let mut t = self.t;
+
+                Self::increase_count(&mut t, buffer.get_pos() as $word);
+
+                let mut msglen = [0u8; $buf / 8];
+                msglen[..$buf / 16].copy_from_slice(&t.1.to_be_bytes());
+                msglen[$buf / 16..].copy_from_slice(&t.0.to_be_bytes());
+
+                let footerlen = 1 + 2 * mem::size_of::<$word>();
+
+                // low bit indicates full-length variant
+                let isfull = ($bits == 8 * mem::size_of::<[$word; 8]>()) as u8;
+                // high bit indicates fit with no padding
+                let exactfit = if buffer.get_pos() + footerlen != $buf {
+                    0x00
+                } else {
+                    0x80
+                };
+                let magic = isfull | exactfit;
+
+                // if header won't fit in last data block, pad to the end and start a new one
+                let extra_block = buffer.get_pos() + footerlen > $buf;
+                if extra_block {
+                    let pad = $buf - buffer.get_pos();
+                    buffer
+                        .digest_blocks(&PADDING[..pad], |block| compressor.put_block(&block[0], t));
+                    debug_assert_eq!(buffer.get_pos(), 0);
+                }
+
+                // pad last block up to footer start point
+                if buffer.get_pos() == 0 {
+                    // don't xor t when the block is only padding
+                    t = (0, 0);
+                }
+                // skip begin-padding byte if continuing padding
+                let x = extra_block as usize;
+                let (start, end) = (x, x + ($buf - footerlen - buffer.get_pos()));
+                buffer.digest_blocks(&PADDING[start..end], |_| unreachable!());
+                buffer.digest_blocks(&[magic], |_| unreachable!());
+                buffer.digest_blocks(&msglen, |block| compressor.put_block(&block[0], t));
+                debug_assert_eq!(buffer.get_pos(), 0);
 
                 out.copy_from_slice(&compressor.finalize()[..$Bytes::to_usize()]);
             }
@@ -263,6 +312,8 @@ macro_rules! define_hasher {
                 *self = Self::default()
             }
         }
+
+        impl digest::HashMarker for $name {}
     };
 }
 

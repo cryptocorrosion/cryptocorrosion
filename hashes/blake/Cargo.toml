@@ -1,7 +1,8 @@
 [package]
 name = "blake-hash"
-version = "0.4.1"
+version = "0.5.0"
 authors = ["The CryptoCorrosion Contributors"]
+edition = "2021"
 license = "MIT/Apache-2.0"
 description = "BLAKE hash functions"
 repository = "https://github.com/cryptocorrosion/cryptocorrosion"
@@ -10,8 +11,8 @@ categories = ["cryptography", "no-std"]
 rust-version = "1.61"
 
 [dependencies]
-block-buffer = "0.9"
-digest = "0.9"
+digest = "0.10"
+block-buffer = "0.10.4"
 simd = { package = "ppv-lite86", version = "0.2.16", optional = true }
 
 [features]
@@ -19,7 +20,7 @@ default = ["simd", "std"]
 std = []
 
 [dev-dependencies]
-digest = { version = "0.9", features = ["dev"] }
+digest = { version = "0.10", features = ["dev"] }
 
 [badges]
 travis-ci = { repository = "cryptocorrosion/cryptocorrosion" }
