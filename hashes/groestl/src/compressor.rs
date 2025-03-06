@@ -12,9 +12,11 @@ trait Map2 {
         Self: Sized;
 }
 
-#[derive(Copy, Clone, FromBytes, IntoBytes)]
-#[repr(C)]
-pub struct X4(__m128i, __m128i, __m128i, __m128i);
+zerocopy::cryptocorrosion_derive_traits! {
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    pub struct X4(__m128i, __m128i, __m128i, __m128i);
+}
 
 #[derive(Copy, Clone)]
 pub struct X8(
