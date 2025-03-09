@@ -7,3 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.1]
 ### Changed
 - Update `ppv-lite86` dependency to fix support for non-x86 platforms.
+
+## 0.5.0
+### Changed
+- Update `digest` dependency to 0.10
