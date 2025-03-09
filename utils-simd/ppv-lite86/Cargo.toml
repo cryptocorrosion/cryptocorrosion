@@ -1,10 +1,10 @@
 [package]
 name = "ppv-lite86"
-version = "0.2.20"
+version = "0.2.21"
 authors = ["The CryptoCorrosion Contributors"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
-description = "Implementation of the crypto-simd API for x86"
+description = "Cross-platform cryptography-oriented low-level SIMD library."
 repository = "https://github.com/cryptocorrosion/cryptocorrosion"
 keywords = ["crypto", "simd", "x86"]
 categories = ["cryptography", "no-std"]
