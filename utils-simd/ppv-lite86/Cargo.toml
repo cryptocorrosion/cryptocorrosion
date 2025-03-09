@@ -11,7 +11,7 @@ categories = ["cryptography", "no-std"]
 rust-version = "1.61"
 
 [dependencies]
-zerocopy = { version = "0.8", features = ["simd", "derive"] }
+zerocopy = { version = "0.8.23", features = ["simd"] }
 
 [badges]
 travis-ci = { repository = "cryptocorrosion/cryptocorrosion" }
